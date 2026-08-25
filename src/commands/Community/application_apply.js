@@ -2,12 +2,12 @@ import { showApplicationModal } from './apply.js';
 
 import {
     getApplicationRoles
-} from '../utils/database.js';
+} from '../../utils/database.js';
 
 import {
     ErrorTypes,
     replyUserError
-} from '../utils/errorHandler.js';
+} from '../../utils/errorHandler.js';
 
 
 // ============================================================
@@ -23,13 +23,32 @@ export async function handleApplicationButton(interaction) {
         return false;
     }
 
-    // Ignore other buttons
+
+    // ========================================================
+    // IGNORE OTHER BUTTONS
+    // ========================================================
+
     if (
         !interaction.customId.startsWith(
             'application_apply:'
         )
     ) {
         return false;
+    }
+
+
+    // ========================================================
+    // MAKE SURE BUTTON IS USED IN A SERVER
+    // ========================================================
+
+    if (!interaction.inGuild()) {
+        await replyUserError(interaction, {
+            type: ErrorTypes.UNKNOWN,
+            message:
+                'Applications can only be used in a server.'
+        });
+
+        return true;
     }
 
 
@@ -52,32 +71,19 @@ export async function handleApplicationButton(interaction) {
 
 
     // ========================================================
-    // MAKE SURE BUTTON IS USED IN A SERVER
-    // ========================================================
-
-    if (!interaction.inGuild()) {
-        await replyUserError(interaction, {
-            type: ErrorTypes.UNKNOWN,
-            message:
-                'Applications can only be used in a server.'
-        });
-
-        return true;
-    }
-
-
-    // ========================================================
     // GET APPLICATION ROLES
     // ========================================================
 
     let applicationRoles;
 
     try {
+
         applicationRoles =
             await getApplicationRoles(
                 interaction.client,
                 interaction.guild.id
             );
+
     } catch (error) {
 
         console.error(
@@ -85,11 +91,16 @@ export async function handleApplicationButton(interaction) {
             error
         );
 
-        await replyUserError(interaction, {
-            type: ErrorTypes.UNKNOWN,
-            message:
-                'Unable to load applications right now.'
-        });
+        if (
+            !interaction.replied &&
+            !interaction.deferred
+        ) {
+            await replyUserError(interaction, {
+                type: ErrorTypes.UNKNOWN,
+                message:
+                    'Unable to load applications right now.'
+            });
+        }
 
         return true;
     }
@@ -101,10 +112,13 @@ export async function handleApplicationButton(interaction) {
 
     const applicationRole =
         applicationRoles?.find(
-            app => String(app.roleId) === String(roleId)
+            app =>
+                String(app.roleId) ===
+                String(roleId)
         );
 
     if (!applicationRole) {
+
         await replyUserError(interaction, {
             type: ErrorTypes.CONFIGURATION,
             message:
@@ -133,8 +147,8 @@ export async function handleApplicationButton(interaction) {
             error
         );
 
-        // Don't attempt another response if Discord
-        // has already received the interaction.
+        // Only respond if Discord has not
+        // already received a response.
         if (
             !interaction.replied &&
             !interaction.deferred
@@ -147,5 +161,10 @@ export async function handleApplicationButton(interaction) {
         }
     }
 
+
+    // ========================================================
+    // HANDLED
+    // ========================================================
+
     return true;
-}
+            }
