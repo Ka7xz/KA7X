@@ -19,38 +19,32 @@ export default {
     data: new SlashCommandBuilder()
         .setName("timeout")
         .setDescription("Timeout a user for a specific duration.")
-
         .addUserOption((option) =>
             option
                 .setName("target")
                 .setDescription("User to timeout")
-                .setRequired(true)
+                .setRequired(true),
         )
-
-        .addIntegerOption((option) =>
-            option
-                .setName("duration")
-                .setDescription("Duration of the timeout")
-                .setRequired(true)
-                .addChoices(...durationChoices)
+        .addIntegerOption(
+            (option) =>
+                option
+                    .setName("duration")
+                    .setDescription("Duration of the timeout")
+                    .setRequired(true)
+                    .addChoices(...durationChoices),
         )
-
         .addStringOption((option) =>
             option
                 .setName("reason")
-                .setDescription("Reason for the timeout")
+                .setDescription("Reason for the timeout"),
         )
-
-        .setDefaultMemberPermissions(
-            PermissionFlagsBits.ModerateMembers
-        ),
+        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
 
     category: "moderation",
 
     async execute(interaction, config, client) {
 
-        const deferSuccess =
-            await InteractionHelper.safeDefer(interaction);
+        const deferSuccess = await InteractionHelper.safeDefer(interaction);
 
         if (!deferSuccess) {
             logger.warn(`Timeout interaction defer failed`, {
@@ -61,34 +55,22 @@ export default {
             return;
         }
 
-        const targetUser =
-            interaction.options.getUser("target");
-
-        const member =
-            interaction.options.getMember("target");
-
-        const durationMinutes =
-            interaction.options.getInteger("duration");
-
+        const targetUser = interaction.options.getUser("target");
+        const member = interaction.options.getMember("target");
+        const durationMinutes = interaction.options.getInteger("duration");
         const reason =
             interaction.options.getString("reason") ||
             "No reason provided";
 
-
-        // Check target
         if (!targetUser) {
             throw new TitanBotError(
                 'Missing target user',
                 ErrorTypes.USER_INPUT,
                 'You must specify a user to timeout.',
-                {
-                    subtype: 'invalid_user'
-                },
+                { subtype: 'invalid_user' },
             );
         }
 
-
-        // Prevent self timeout
         if (targetUser.id === interaction.user.id) {
             throw new TitanBotError(
                 "Cannot timeout self",
@@ -97,8 +79,6 @@ export default {
             );
         }
 
-
-        // Prevent bot timeout
         if (targetUser.id === client.user.id) {
             throw new TitanBotError(
                 "Cannot timeout bot",
@@ -107,8 +87,6 @@ export default {
             );
         }
 
-
-        // Check member
         if (!member) {
             throw new TitanBotError(
                 "Target not found",
@@ -117,68 +95,46 @@ export default {
             );
         }
 
+        const durationMs = durationMinutes * 60 * 1000;
 
-        // Convert minutes to milliseconds
-        const durationMs =
-            durationMinutes * 60 * 1000;
+        const result = await ModerationService.timeoutUser({
+            guild: interaction.guild,
+            member,
+            moderator: interaction.member,
+            durationMs,
+            reason,
+        });
 
-
-        // Apply timeout
-        const result =
-            await ModerationService.timeoutUser({
-                guild: interaction.guild,
-                member,
-                moderator: interaction.member,
-                duration: durationMs,
-                reason,
-            });
-
-
-        // Display duration
         const durationDisplay =
-            durationChoices.find(
-                (choice) =>
-                    choice.value === durationMinutes
-            )?.name ||
-            `${durationMinutes} minutes`;
+            durationChoices.find((c) => c.value === durationMinutes)
+                ?.name || `${durationMinutes} minutes`;
 
-
-        // DM the timed out user
+        // DM embed
         try {
-
             await targetUser.send({
                 embeds: [
                     warningEmbed(
                         "You Have Been Timed Out",
-
                         `You have been timed out in ***${interaction.guild.name}***.\n\n` +
                         `**Reason:** ${reason}\n` +
                         `**Duration:** ${durationDisplay}\n` +
                         `**Moderator:** ${interaction.user.tag}`
-                    )
-                ]
+                    ),
+                ],
             });
-
         } catch (error) {
-
-            logger.warn(
-                `Failed to DM timed out user`,
-                {
-                    userId: targetUser.id,
-                    guildId: interaction.guildId,
-                    error: error.message
-                }
-            );
-
+            logger.warn(`Failed to DM timed out user`, {
+                userId: targetUser.id,
+                guildId: interaction.guildId,
+                error: error.message,
+            });
         }
 
-
-        // Server response
+        // Server embed
         await InteractionHelper.safeEditReply(interaction, {
             embeds: [
                 successEmbed(
                     `Timed out ${targetUser.tag} for ${durationDisplay}.`,
-
                     `**Reason:** ${reason}\n` +
                     `**Moderator:** ${interaction.user.tag}\n` +
                     `**Case ID:** #${result.caseId}`,
