@@ -1,4 +1,4 @@
-import { showApplicationModal } from '../commands/Community/apply.js';
+import { showApplicationModal } from './apply.js';
 
 import {
     getApplicationRoles
