@@ -161,11 +161,11 @@ export const botConfig = {
   economy: {
     currency: {
       // Currency display name.
-      name: "coins",
+      name: "VEX",
       // Plural display name.
-      namePlural: "coins",
+      namePlural: "vexs",
       // Currency symbol shown in balances.
-      symbol: "$",
+      symbol: "¢",
     },
 
     // Starting balance for new users.
@@ -194,7 +194,7 @@ export const botConfig = {
     },
 
     // Chance to succeed when robbing (0.4 = 40%).
-    robSuccessRate: 0.4,
+    robSuccessRate: 0.7,
 
     // Jail time after failed rob (milliseconds).
     // 3600000 = 1 hour.
