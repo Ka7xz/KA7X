@@ -1,11 +1,12 @@
-import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType, MessageFlags } from 'discord.js';
-import { createEmbed, errorEmbed, successEmbed, infoEmbed, warningEmbed } from '../../utils/embeds.js';
+import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
+import { successEmbed, warningEmbed } from '../../utils/embeds.js';
 import { logModerationAction } from '../../utils/moderation.js';
 import { logger } from '../../utils/logger.js';
 import { WarningService } from '../../services/moderation/warningService.js';
 import { ModerationService } from '../../services/moderation/moderationService.js';
 import { TitanBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
+
 export default {
     data: new SlashCommandBuilder()
         .setName("warn")
@@ -23,10 +24,12 @@ export default {
                 .setDescription("Reason for the warning"),
         )
         .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+
     category: "moderation",
 
     async execute(interaction, config, client) {
         const deferSuccess = await InteractionHelper.safeDefer(interaction);
+
         if (!deferSuccess) {
             logger.warn(`Warn interaction defer failed`, {
                 userId: interaction.user.id,
@@ -68,7 +71,11 @@ export default {
             );
         }
 
-        ModerationService.assertModerationHierarchy(interaction.member, member, 'warn');
+        ModerationService.assertModerationHierarchy(
+            interaction.member,
+            member,
+            'warn'
+        );
 
         const { id, totalCount } = await WarningService.addWarning({
             guildId,
@@ -96,6 +103,28 @@ export default {
             }
         });
 
+        // Send warning DM to the user
+        try {
+            await target.send({
+                embeds: [
+                    warningEmbed(
+                        "You Have Been Warned",
+                        `You have received a warning in **${interaction.guild.name}**.\n\n` +
+                        `**Reason:** ${reason}\n` +
+                        `**Total Warns:** ${totalCount}\n\n` +
+                        `**Moderator:** ${moderator.tag}`
+                    )
+                ]
+            });
+        } catch (error) {
+            logger.warn(`Failed to DM warned user`, {
+                userId: target.id,
+                guildId,
+                error: error.message
+            });
+        }
+
+        // Server warning message
         await InteractionHelper.safeEditReply(interaction, {
             embeds: [
                 successEmbed(
