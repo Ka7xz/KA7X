@@ -1,6 +1,4 @@
-import {
-    handleApplicationSetup
-} from './appSetup.js';
+import { handleApplicationSetup } from './appSetup.js';
 import { SlashCommandBuilder, PermissionFlagsBits, PermissionsBitField, ChannelType, ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, ComponentType, LabelBuilder, RoleSelectMenuBuilder } from 'discord.js';
 import { createEmbed, successEmbed } from '../../utils/embeds.js';
 import { getColor, getApplicationStatusColor } from '../../config/bot.js';
