@@ -125,7 +125,8 @@ export default {
         await ApplicationService.checkManagerPermission(interaction.client, guild.id, member);
 
         if (subcommand === "setup") {
-            await handleSetup(interaction);
+    await handleApplicationSetup(interaction);
+        }
         } else if (subcommand === "review") {
             await handleReview(interaction);
         } else if (subcommand === "list") {
