@@ -17,8 +17,6 @@ import {
 import { logger } from '../../utils/logger.js';
 
 import {
-    withErrorHandling,
-    createError,
     ErrorTypes,
     replyUserError
 } from '../../utils/errorHandler.js';
@@ -31,91 +29,64 @@ import {
     getUserApplications,
     getApplication,
     getApplicationRoles,
-    getApplicationRoleSettings,
-    updateApplication
+    getApplicationRoleSettings
 } from '../../utils/database.js';
 
-import {
-    logEvent,
-    EVENT_TYPES,
-    resolveApplicationLogChannel
-} from '../../services/loggingService.js';
 
-import {
-    formatLogLine,
-    resolveUserAuthor
-} from '../../utils/logging/logEmbeds.js';
-
-import { getGuildConfig } from '../../services/config/guildConfig.js';
-
-
-/*
-|--------------------------------------------------------------------------
-| Default questions
-|--------------------------------------------------------------------------
-|
-| Total: 10
-| Q1: required
-| Q2-Q10: optional
-|
-*/
+// ============================================================
+// DEFAULT QUESTIONS
+// ============================================================
 
 const DEFAULT_QUESTIONS = [
     "Why do you want this role?",
     "What experience do you have?",
     "Why should we choose you?",
+    "How long have you been in this server?",
     "How active are you?",
-    "What are your strengths?",
-    "What are your weaknesses?",
-    "How would you handle a difficult situation?",
-    "How would you deal with a rule violation?",
-    "What would you contribute to the server?",
+    "How would you handle a difficult member?",
+    "How would you handle a conflict between members?",
+    "What would you do if another staff member broke a rule?",
+    "What makes you a good fit for this role?",
     "Is there anything else you would like us to know?"
 ];
 
 
-/*
-|--------------------------------------------------------------------------
-| Temporary applications
-|--------------------------------------------------------------------------
-|
-| Discord allows only 5 text inputs in one modal.
-|
-| Modal 1 = Q1-Q5
-| Modal 2 = Q6-Q10
-|
-*/
+// ============================================================
+// TEMPORARY APPLICATION DATA
+// ============================================================
+//
+// Discord allows only 5 inputs per modal.
+// Therefore:
+//
+// Modal 1 = Q1-Q5
+// Modal 2 = Q6-Q10
+//
+// Data is kept temporarily between the two modals.
+//
 
 const pendingApplications = new Map();
 
 
-/*
-|--------------------------------------------------------------------------
-| Normalize questions
-|--------------------------------------------------------------------------
-*/
+// ============================================================
+// QUESTIONS
+// ============================================================
 
 function normalizeQuestions(configuredQuestions = []) {
-    const questions = Array.isArray(configuredQuestions)
-        ? configuredQuestions
-            .map(q => String(q || '').trim())
-            .filter(q => q.length > 0)
-            .slice(0, 10)
-        : [];
+    if (!Array.isArray(configuredQuestions)) {
+        return [];
+    }
 
-    return questions;
+    return configuredQuestions
+        .map(question => String(question || '').trim())
+        .filter(question => question.length > 0)
+        .slice(0, 10);
 }
 
-
-/*
-|--------------------------------------------------------------------------
-| Get exactly up to 10 questions
-|--------------------------------------------------------------------------
-*/
 
 function getQuestions(settings, roleSettings) {
     let questions = [];
 
+    // Role-specific questions first
     if (
         roleSettings?.questions &&
         Array.isArray(roleSettings.questions)
@@ -123,6 +94,7 @@ function getQuestions(settings, roleSettings) {
         questions = normalizeQuestions(roleSettings.questions);
     }
 
+    // Server-wide questions
     if (
         questions.length === 0 &&
         settings?.questions &&
@@ -131,35 +103,25 @@ function getQuestions(settings, roleSettings) {
         questions = normalizeQuestions(settings.questions);
     }
 
+    // Defaults
     if (questions.length === 0) {
         questions = [...DEFAULT_QUESTIONS];
     }
 
-    /*
-     * Always allow a maximum of 10.
-     * If fewer than 10 were configured, use the defaults
-     * to fill the remaining questions.
-     */
-
-    if (questions.length < 10) {
-        for (const question of DEFAULT_QUESTIONS) {
-            if (questions.length >= 10) break;
-
-            if (!questions.includes(question)) {
-                questions.push(question);
-            }
-        }
+    // Make sure there are exactly 10 questions.
+    while (questions.length < 10) {
+        questions.push(
+            DEFAULT_QUESTIONS[questions.length]
+        );
     }
 
     return questions.slice(0, 10);
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| Application status
-|--------------------------------------------------------------------------
-*/
+// ============================================================
+// STATUS
+// ============================================================
 
 function getApplicationStatusPresentation(statusValue) {
     const normalized =
@@ -193,24 +155,31 @@ function getApplicationStatusPresentation(statusValue) {
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| Create modal
-|--------------------------------------------------------------------------
-*/
+// ============================================================
+// CREATE MODAL
+// ============================================================
 
-function createQuestionModal(applicationRole, questions, startIndex, page) {
-    const endIndex = Math.min(startIndex + 5, questions.length);
-
+function createApplicationModal(
+    roleId,
+    applicationName,
+    questions,
+    startIndex,
+    endIndex,
+    page
+) {
     const modal = new ModalBuilder()
         .setCustomId(
-            `app_modal_${page}_${applicationRole.roleId}`
+            `app_modal_${page}_${roleId}`
         )
         .setTitle(
-            `Application: ${applicationRole.name}`.slice(0, 45)
+            `Application: ${applicationName}`.slice(0, 45)
         );
 
-    for (let i = startIndex; i < endIndex; i++) {
+    for (
+        let i = startIndex;
+        i < endIndex && i < questions.length;
+        i++
+    ) {
         const question = questions[i];
 
         const input = new TextInputBuilder()
@@ -233,88 +202,267 @@ function createQuestionModal(applicationRole, questions, startIndex, page) {
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| Show first application modal
-|--------------------------------------------------------------------------
-*/
+// ============================================================
+// SLASH COMMAND
+// ============================================================
+
+export default {
+    slashOnly: true,
+
+    data: new SlashCommandBuilder()
+        .setName('apply')
+        .setDescription('Manage role applications')
+
+        // /apply list
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('list')
+                .setDescription('View available applications')
+        )
+
+        // /apply submit
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('submit')
+                .setDescription('Submit an application')
+                .addStringOption(option =>
+                    option
+                        .setName('application')
+                        .setDescription('Application to submit')
+                        .setRequired(true)
+                        .setAutocomplete(true)
+                )
+        )
+
+        // /apply status
+        .addSubcommand(subcommand =>
+            subcommand
+                .setName('status')
+                .setDescription('Check your application status')
+                .addStringOption(option =>
+                    option
+                        .setName('id')
+                        .setDescription('Application ID')
+                        .setRequired(false)
+                )
+        ),
+
+    category: 'Community',
+
+    async execute(interaction) {
+        if (!interaction.inGuild()) {
+            return replyUserError(interaction, {
+                type: ErrorTypes.UNKNOWN,
+                message: 'This command can only be used in a server.'
+            });
+        }
+
+        const subcommand = interaction.options.getSubcommand();
+
+        if (subcommand === 'list') {
+            return handleList(interaction);
+        }
+
+        if (subcommand === 'submit') {
+            return handleSubmit(interaction);
+        }
+
+        if (subcommand === 'status') {
+            return handleStatus(interaction);
+        }
+    }
+};
+
+
+// ============================================================
+// /APPLY LIST
+// ============================================================
+
+async function handleList(interaction) {
+    await InteractionHelper.safeDefer(interaction);
+
+    const applicationRoles = await getApplicationRoles(
+        interaction.client,
+        interaction.guild.id
+    );
+
+    if (
+        !applicationRoles ||
+        applicationRoles.length === 0
+    ) {
+        return InteractionHelper.safeEditReply(
+            interaction,
+            {
+                embeds: [
+                    createEmbed({
+                        title: '📋 Applications',
+                        description:
+                            'There are currently no applications available.'
+                    })
+                ],
+                components: []
+            }
+        );
+    }
+
+    const embed = createEmbed({
+        title: '📋 Staff Applications',
+        description:
+            'Click the **Apply** button for the application you want to submit.\n\n' +
+            '📝 Each application has **10 questions**.\n' +
+            '✅ **Question 1 is required.**\n' +
+            '⚪ **Questions 2–10 are optional.**'
+    });
+
+    const rows = [];
+
+    /*
+     * Discord allows max 5 buttons per ActionRow.
+     */
+    let currentRow = new ActionRowBuilder();
+
+    for (
+        let index = 0;
+        index < applicationRoles.length && index < 25;
+        index++
+    ) {
+        const app = applicationRoles[index];
+
+        const role = interaction.guild.roles.cache.get(
+            app.roleId
+        );
+
+        embed.addFields({
+            name: `${index + 1}. ${app.name}`,
+            value: role
+                ? `Role: <@&${app.roleId}>`
+                : 'Role unavailable',
+            inline: false
+        });
+
+        const button = new ButtonBuilder()
+            .setCustomId(
+                `application_apply:${app.roleId}`
+            )
+            .setLabel(
+                `Apply: ${app.name}`.substring(0, 80)
+            )
+            .setStyle(ButtonStyle.Primary);
+
+        currentRow.addComponents(button);
+
+        if (currentRow.components.length === 5) {
+            rows.push(currentRow);
+            currentRow = new ActionRowBuilder();
+        }
+    }
+
+    if (currentRow.components.length > 0) {
+        rows.push(currentRow);
+    }
+
+    return InteractionHelper.safeEditReply(
+        interaction,
+        {
+            embeds: [embed],
+            components: rows
+        }
+    );
+}
+
+
+// ============================================================
+// /APPLY SUBMIT
+// ============================================================
+
+async function handleSubmit(interaction) {
+    const applicationName =
+        interaction.options.getString('application');
+
+    const applicationRoles =
+        await getApplicationRoles(
+            interaction.client,
+            interaction.guild.id
+        );
+
+    const applicationRole =
+        applicationRoles.find(
+            app =>
+                app.name.toLowerCase() ===
+                applicationName.toLowerCase()
+        );
+
+    if (!applicationRole) {
+        return replyUserError(interaction, {
+            type: ErrorTypes.USER_INPUT,
+            message: 'Application not found.'
+        });
+    }
+
+    await showApplicationModal(
+        interaction,
+        applicationRole
+    );
+}
+
+
+// ============================================================
+// SHOW FIRST MODAL
+// ============================================================
 
 export async function showApplicationModal(
     interaction,
     applicationRole
 ) {
-    const settings = await getApplicationSettings(
-        interaction.client,
-        interaction.guild.id
-    );
+    const settings =
+        await getApplicationSettings(
+            interaction.client,
+            interaction.guild.id
+        );
 
-    const roleSettings = await getApplicationRoleSettings(
-        interaction.client,
-        interaction.guild.id,
-        applicationRole.roleId
-    );
+    const roleSettings =
+        await getApplicationRoleSettings(
+            interaction.client,
+            interaction.guild.id,
+            applicationRole.roleId
+        );
 
-    const questions = getQuestions(settings, roleSettings);
+    const questions =
+        getQuestions(
+            settings,
+            roleSettings
+        );
 
-    /*
-     * Check pending application before opening form.
-     */
-
-    const userApps = await getUserApplications(
-        interaction.client,
-        interaction.guild.id,
-        interaction.user.id
-    );
-
-    const pendingApp = userApps.find(
-        app => app.status === 'pending'
-    );
-
-    if (pendingApp) {
-        return replyUserError(interaction, {
-            type: ErrorTypes.UNKNOWN,
-            message:
-                'You already have a pending application. Please wait for it to be reviewed.'
-        });
-    }
-
-    /*
-     * Store temporary application information.
-     */
-
-    const key =
-        `${interaction.guild.id}:${interaction.user.id}:${applicationRole.roleId}`;
-
-    pendingApplications.set(key, {
-        guildId: interaction.guild.id,
-        userId: interaction.user.id,
-        roleId: applicationRole.roleId,
-        roleName: applicationRole.name,
-        questions,
-        answers: []
-    });
-
-    const modal = createQuestionModal(
-        applicationRole,
-        questions,
-        0,
-        1
-    );
+    const modal =
+        createApplicationModal(
+            applicationRole.roleId,
+            applicationRole.name,
+            questions,
+            0,
+            5,
+            1
+        );
 
     await interaction.showModal(modal);
 }
 
 
-/*
-|--------------------------------------------------------------------------
-| Handle application modal
-|--------------------------------------------------------------------------
-*/
+// ============================================================
+// HANDLE APPLICATION MODALS
+// ============================================================
 
-export async function handleApplicationModal(interaction) {
-    if (!interaction.isModalSubmit()) return;
+export async function handleApplicationModal(
+    interaction
+) {
+    if (!interaction.isModalSubmit()) {
+        return;
+    }
 
-    if (!interaction.customId.startsWith('app_modal_')) {
+    if (
+        !interaction.customId.startsWith(
+            'app_modal_'
+        )
+    ) {
         return;
     }
 
@@ -325,140 +473,315 @@ export async function handleApplicationModal(interaction) {
      * app_modal_2_ROLEID
      */
 
-    const parts = interaction.customId.split('_');
+    const parts =
+        interaction.customId.split('_');
 
-    const page = Number(parts[2]);
+    const page = parts[2];
     const roleId = parts.slice(3).join('_');
 
-    if (![1, 2].includes(page) || !roleId) {
-        return replyUserError(interaction, {
-            type: ErrorTypes.USER_INPUT,
-            message: 'Invalid application form.'
-        });
-    }
-
-    const key =
-        `${interaction.guild.id}:${interaction.user.id}:${roleId}`;
-
-    const pending = pendingApplications.get(key);
-
-    if (!pending) {
-        return replyUserError(interaction, {
-            type: ErrorTypes.UNKNOWN,
-            message:
-                'This application session has expired. Please click the Apply button again.'
-        });
-    }
-
-    /*
-     * Collect answers from this modal.
-     */
-
-    const startIndex = page === 1 ? 0 : 5;
-    const endIndex = page === 1
-        ? Math.min(5, pending.questions.length)
-        : pending.questions.length;
-
-    for (let i = startIndex; i < endIndex; i++) {
-        let answer = '';
-
-        try {
-            answer =
-                interaction.fields.getTextInputValue(`q${i}`) || '';
-        } catch {
-            answer = '';
-        }
-
-        pending.answers[i] = answer.trim();
-    }
-
-    /*
-     * Q1 is the ONLY required question.
-     */
-
-    if (
-        page === 1 &&
-        !pending.answers[0]
-    ) {
-        return replyUserError(interaction, {
-            type: ErrorTypes.USER_INPUT,
-            message: 'Question 1 is required.'
-        });
-    }
-
-    /*
-     * First modal finished.
-     * Open Q6-Q10.
-     */
-
-    if (
-        page === 1 &&
-        pending.questions.length > 5
-    ) {
-        const applicationRole = {
-            roleId: pending.roleId,
-            name: pending.roleName
-        };
-
-        const secondModal = createQuestionModal(
-            applicationRole,
-            pending.questions,
-            5,
-            2
+    const applicationRoles =
+        await getApplicationRoles(
+            interaction.client,
+            interaction.guild.id
         );
 
-        return interaction.showModal(secondModal);
+    const applicationRole =
+        applicationRoles.find(
+            app => app.roleId === roleId
+        );
+
+    if (!applicationRole) {
+        return replyUserError(interaction, {
+            type: ErrorTypes.CONFIGURATION,
+            message:
+                'Application configuration was not found.'
+        });
     }
 
-    /*
-     * Build final answers.
-     */
+    const settings =
+        await getApplicationSettings(
+            interaction.client,
+            interaction.guild.id
+        );
 
-    const answers = pending.questions.map(
-        (question, index) => ({
-            question,
-            answer: pending.answers[index] || ''
-        })
-    );
+    const roleSettings =
+        await getApplicationRoleSettings(
+            interaction.client,
+            interaction.guild.id,
+            roleId
+        );
 
-    /*
-     * Submit application.
-     */
+    const questions =
+        getQuestions(
+            settings,
+            roleSettings
+        );
 
-    try {
-        const application =
-            await ApplicationService.submitApplication(
-                interaction.client,
+    // ========================================================
+    // PAGE 1 — Q1-Q5
+    // ========================================================
+
+    if (page === '1') {
+        const firstAnswers = [];
+
+        for (let i = 0; i < 5; i++) {
+            const answer =
+                interaction.fields.getTextInputValue(
+                    `q${i}`
+                ) || '';
+
+            firstAnswers.push({
+                question: questions[i],
+                answer: answer.trim()
+            });
+        }
+
+        // Q1 REQUIRED
+        if (!firstAnswers[0].answer) {
+            return replyUserError(interaction, {
+                type: ErrorTypes.USER_INPUT,
+                message:
+                    'Question 1 is required.'
+            });
+        }
+
+        /*
+         * Save Q1-Q5 temporarily.
+         */
+        const pendingKey =
+            `${interaction.guild.id}:${interaction.user.id}:${roleId}`;
+
+        pendingApplications.set(
+            pendingKey,
+            {
+                guildId: interaction.guild.id,
+                userId: interaction.user.id,
+                roleId,
+                roleName: applicationRole.name,
+                username: interaction.user.tag,
+                avatar:
+                    interaction.user.displayAvatarURL(),
+                answers: firstAnswers,
+                createdAt: Date.now()
+            }
+        );
+
+        /*
+         * Open second modal.
+         */
+        const secondModal =
+            createApplicationModal(
+                roleId,
+                applicationRole.name,
+                questions,
+                5,
+                10,
+                2
+            );
+
+        return interaction.showModal(
+            secondModal
+        );
+    }
+
+
+    // ========================================================
+    // PAGE 2 — Q6-Q10
+    // ========================================================
+
+    if (page === '2') {
+        const pendingKey =
+            `${interaction.guild.id}:${interaction.user.id}:${roleId}`;
+
+        const pending =
+            pendingApplications.get(
+                pendingKey
+            );
+
+        if (!pending) {
+            return replyUserError(interaction, {
+                type: ErrorTypes.UNKNOWN,
+                message:
+                    'Your application session expired. Please click Apply again.'
+            });
+        }
+
+        const secondAnswers = [];
+
+        for (let i = 5; i < 10; i++) {
+            const answer =
+                interaction.fields.getTextInputValue(
+                    `q${i}`
+                ) || '';
+
+            secondAnswers.push({
+                question: questions[i],
+                answer: answer.trim()
+            });
+        }
+
+        const answers = [
+            ...pending.answers,
+            ...secondAnswers
+        ];
+
+        try {
+            const application =
+                await ApplicationService.submitApplication(
+                    interaction.client,
+                    {
+                        guildId:
+                            pending.guildId,
+
+                        userId:
+                            pending.userId,
+
+                        roleId:
+                            pending.roleId,
+
+                        roleName:
+                            pending.roleName,
+
+                        username:
+                            pending.username,
+
+                        avatar:
+                            pending.avatar,
+
+                        answers
+                    }
+                );
+
+            /*
+             * Remove temporary data.
+             */
+            pendingApplications.delete(
+                pendingKey
+            );
+
+            const embed =
+                successEmbed(
+                    'Application Submitted',
+                    `Your application for **${pending.roleName}** has been submitted successfully!\n\n` +
+                    `**Application ID:** \`${application.id}\`\n` +
+                    `**Status:** 🟡 In Progress`
+                );
+
+            return interaction.reply({
+                embeds: [embed],
+                flags: MessageFlags.Ephemeral
+            });
+
+        } catch (error) {
+            logger.error(
+                'Error submitting application:',
                 {
-                    guildId: pending.guildId,
-                    userId: pending.userId,
-                    roleId: pending.roleId,
-                    roleName: pending.roleName,
-                    username: interaction.user.tag,
-                    avatar: interaction.user.displayAvatarURL(),
-                    answers
+                    error: error.message,
+                    guildId:
+                        interaction.guild.id,
+                    userId:
+                        interaction.user.id,
+                    roleId,
+                    stack: error.stack
                 }
             );
 
-        /*
-         * Remove temporary data.
-         */
+            pendingApplications.delete(
+                pendingKey
+            );
 
-        pendingApplications.delete(key);
+            return replyUserError(interaction, {
+                type: ErrorTypes.UNKNOWN,
+                message:
+                    'Something went wrong while submitting your application.'
+            });
+        }
+    }
+}
 
-        /*
-         * Confirmation embed.
-         */
 
-        const embed = successEmbed(
-            '✅ Application Submitted',
-            `Your application for **${pending.roleName}** has been submitted successfully!\n\n` +
-            `**Application ID:** \`${application.id}\`\n` +
-            `**Status:** 🟡 In Progress\n\n` +
-            `Staff will review your application and you can check its status with:\n` +
-            `\`/apply status id:${application.id}\``
+// ============================================================
+// STATUS
+// ============================================================
+
+async function handleStatus(interaction) {
+    const appId =
+        interaction.options.getString('id');
+
+    await InteractionHelper.safeDefer(
+        interaction,
+        {
+            flags: ['Ephemeral']
+        }
+    );
+
+    // --------------------------------------------------------
+    // Specific application
+    // --------------------------------------------------------
+
+    if (appId) {
+        const application =
+            await getApplication(
+                interaction.client,
+                interaction.guild.id,
+                appId
+            );
+
+        if (
+            !application ||
+            application.userId !==
+                interaction.user.id
+        ) {
+            return replyUserError(interaction, {
+                type: ErrorTypes.PERMISSION,
+                message:
+                    'Application not found or you do not have permission to view it.'
+            });
+        }
+
+        const status =
+            getApplicationStatusPresentation(
+                application.status
+            );
+
+        const embed = createEmbed({
+            title:
+                `Application #${application.id}`,
+
+            description:
+                `**Application:** ${application.roleName || 'Unknown'}\n` +
+                `**Status:** ${status.statusEmoji} ${status.statusLabel}\n` +
+                `**Application ID:** \`${application.id}\``
+        });
+
+        return InteractionHelper.safeEditReply(
+            interaction,
+            {
+                embeds: [embed],
+                components: []
+            }
+        );
+    }
+
+    // --------------------------------------------------------
+    // All applications
+    // --------------------------------------------------------
+
+    const applications =
+        await getUserApplications(
+            interaction.client,
+            interaction.guild.id,
+            interaction.user.id
         );
 
-        await interaction.reply({
-            embeds: [embed],
-            flags: MessageFlags.Ephemeral
+    if (
+        !applications ||
+        applications.length === 0
+    ) {
+        return InteractionHelper.safeEditReply(
+            interaction,
+            {
+                embeds: [
+                    createEmbed({
+                        title:
+                            
