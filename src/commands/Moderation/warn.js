@@ -127,11 +127,14 @@ export default {
         // Server warning message
         await InteractionHelper.safeEditReply(interaction, {
             embeds: [
-                successEmbed(
-                    `⚠️ **Warned** ${target.tag}`,
-                    `**Reason:** ${reason}\n**Total Warns:** ${totalCount}`,
-                ),
-            ],
-        });
-    }
-};
+                successEmbed( await InteractionHelper.safeEditReply(interaction, {
+    embeds: [
+        successEmbed(
+            `Warned ${target.tag}`,
+            `**Reason:** ${reason}\n` +
+            `**Total Warns:** ${totalCount}\n` +
+            `**Moderator:** ${moderator.tag}\n` +
+            `**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`,
+        ),
+    ],
+});
