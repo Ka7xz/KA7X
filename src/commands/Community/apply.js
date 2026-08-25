@@ -34,20 +34,20 @@ import {
 
 
 // ============================================================
-// DEFAULT QUESTIONS
+// DEFAULT 10 QUESTIONS
 // ============================================================
 
 const DEFAULT_QUESTIONS = [
-    "Why do you want this role?",
-    "What experience do you have?",
-    "Why should we choose you?",
-    "How long have you been in this server?",
-    "How active are you?",
-    "How would you handle a difficult member?",
-    "How would you handle a conflict between members?",
-    "What would you do if another staff member broke a rule?",
-    "What makes you a good fit for this role?",
-    "Is there anything else you would like us to know?"
+    'Why do you want this role?',
+    'What experience do you have?',
+    'Why should we choose you?',
+    'How long have you been in this server?',
+    'How active are you?',
+    'How would you handle a difficult member?',
+    'How would you handle a conflict between members?',
+    'What would you do if another staff member broke a rule?',
+    'What makes you a good fit for this role?',
+    'Is there anything else you would like us to know?'
 ];
 
 
@@ -68,14 +68,14 @@ function normalizeQuestions(configuredQuestions = []) {
     }
 
     return configuredQuestions
-        .map(q => String(q || '').trim())
-        .filter(q => q.length > 0)
+        .map(question => String(question || '').trim())
+        .filter(question => question.length > 0)
         .slice(0, 10);
 }
 
 
 // ============================================================
-// GET 10 QUESTIONS
+// GET EXACTLY 10 QUESTIONS
 // ============================================================
 
 function getQuestions(settings, roleSettings) {
@@ -86,7 +86,9 @@ function getQuestions(settings, roleSettings) {
         Array.isArray(roleSettings?.questions) &&
         roleSettings.questions.length > 0
     ) {
-        questions = normalizeQuestions(roleSettings.questions);
+        questions = normalizeQuestions(
+            roleSettings.questions
+        );
     }
 
     // Server-wide questions
@@ -95,12 +97,19 @@ function getQuestions(settings, roleSettings) {
         Array.isArray(settings?.questions) &&
         settings.questions.length > 0
     ) {
-        questions = normalizeQuestions(settings.questions);
+        questions = normalizeQuestions(
+            settings.questions
+        );
     }
 
-    // Fill missing questions with defaults
-    while (questions.length < 10) {
-        questions.push(DEFAULT_QUESTIONS[questions.length]);
+    // Defaults
+    if (questions.length === 0) {
+        questions = [...DEFAULT_QUESTIONS];
+    }
+
+    // Fill missing questions
+    for (let i = questions.length; i < 10; i++) {
+        questions.push(DEFAULT_QUESTIONS[i]);
     }
 
     return questions.slice(0, 10);
@@ -108,7 +117,7 @@ function getQuestions(settings, roleSettings) {
 
 
 // ============================================================
-// APPLICATION STATUS
+// STATUS PRESENTATION
 // ============================================================
 
 function getApplicationStatusPresentation(statusValue) {
@@ -144,7 +153,7 @@ function getApplicationStatusPresentation(statusValue) {
 
 
 // ============================================================
-// CREATE MODAL
+// CREATE APPLICATION MODAL
 // ============================================================
 
 function createApplicationModal(
@@ -197,12 +206,14 @@ export default {
         .setName('apply')
         .setDescription('Manage role applications')
 
+        // /apply list
         .addSubcommand(subcommand =>
             subcommand
                 .setName('list')
                 .setDescription('View available applications')
         )
 
+        // /apply submit
         .addSubcommand(subcommand =>
             subcommand
                 .setName('submit')
@@ -216,6 +227,7 @@ export default {
                 )
         )
 
+        // /apply status
         .addSubcommand(subcommand =>
             subcommand
                 .setName('status')
@@ -234,7 +246,8 @@ export default {
         if (!interaction.inGuild()) {
             return replyUserError(interaction, {
                 type: ErrorTypes.UNKNOWN,
-                message: 'This command can only be used in a server.'
+                message:
+                    'This command can only be used in a server.'
             });
         }
 
@@ -300,6 +313,7 @@ async function handleList(interaction) {
     const rows = [];
     let row = new ActionRowBuilder();
 
+    // Discord maximum: 5 buttons per row
     for (
         let i = 0;
         i < applicationRoles.length && i < 25;
@@ -331,7 +345,6 @@ async function handleList(interaction) {
 
         row.addComponents(button);
 
-        // Discord allows maximum 5 buttons per row
         if (row.components.length === 5) {
             rows.push(row);
             row = new ActionRowBuilder();
@@ -358,7 +371,9 @@ async function handleList(interaction) {
 
 async function handleSubmit(interaction) {
     const applicationName =
-        interaction.options.getString('application');
+        interaction.options.getString(
+            'application'
+        );
 
     const applicationRoles =
         await getApplicationRoles(
@@ -388,7 +403,7 @@ async function handleSubmit(interaction) {
 
 
 // ============================================================
-// SHOW FIRST MODAL
+// SHOW FIRST MODAL — QUESTIONS 1-5
 // ============================================================
 
 export async function showApplicationModal(
@@ -429,7 +444,7 @@ export async function showApplicationModal(
 
 
 // ============================================================
-// MODAL HANDLER
+// APPLICATION MODAL HANDLER
 // ============================================================
 
 export async function handleApplicationModal(
@@ -447,11 +462,20 @@ export async function handleApplicationModal(
         return;
     }
 
+    /*
+     * Custom IDs:
+     *
+     * app_modal_1_ROLE_ID
+     * app_modal_2_ROLE_ID
+     */
+
     const parts =
         interaction.customId.split('_');
 
     const page = parts[2];
-    const roleId = parts.slice(3).join('_');
+
+    const roleId =
+        parts.slice(3).join('_');
 
     const applicationRoles =
         await getApplicationRoles(
@@ -493,7 +517,7 @@ export async function handleApplicationModal(
 
 
     // ========================================================
-    // PAGE 1
+    // PAGE 1 — QUESTIONS 1-5
     // ========================================================
 
     if (page === '1') {
@@ -515,7 +539,8 @@ export async function handleApplicationModal(
         if (!answers[0].answer) {
             return replyUserError(interaction, {
                 type: ErrorTypes.USER_INPUT,
-                message: 'Question 1 is required.'
+                message:
+                    'Question 1 is required.'
             });
         }
 
@@ -544,11 +569,12 @@ export async function handleApplicationModal(
 
                 answers,
 
-                createdAt: Date.now()
+                createdAt:
+                    Date.now()
             }
         );
 
-        // Automatically open questions 6-10
+        // Open Q6-Q10
         const secondModal =
             createApplicationModal(
                 roleId,
@@ -566,7 +592,7 @@ export async function handleApplicationModal(
 
 
     // ========================================================
-    // PAGE 2
+    // PAGE 2 — QUESTIONS 6-10
     // ========================================================
 
     if (page === '2') {
@@ -588,6 +614,7 @@ export async function handleApplicationModal(
             ...pending.answers
         ];
 
+        // Q6-Q10
         for (let i = 5; i < 10; i++) {
             const answer =
                 interaction.fields.getTextInputValue(
@@ -652,7 +679,8 @@ export async function handleApplicationModal(
                     userId:
                         interaction.user.id,
                     roleId,
-                    stack: error.stack
+                    stack:
+                        error.stack
                 }
             );
 
@@ -669,7 +697,7 @@ export async function handleApplicationModal(
 
 
 // ============================================================
-// STATUS
+// /APPLY STATUS
 // ============================================================
 
 async function handleStatus(interaction) {
@@ -682,6 +710,11 @@ async function handleStatus(interaction) {
             flags: ['Ephemeral']
         }
     );
+
+
+    // --------------------------------------------------------
+    // Specific application
+    // --------------------------------------------------------
 
     if (appId) {
         const application =
@@ -727,6 +760,11 @@ async function handleStatus(interaction) {
         );
     }
 
+
+    // --------------------------------------------------------
+    // All user's applications
+    // --------------------------------------------------------
+
     const applications =
         await getUserApplications(
             interaction.client,
@@ -750,36 +788,4 @@ async function handleStatus(interaction) {
                             'You have not submitted any applications yet.'
                     })
                 ],
-                components: []
-            }
-        );
-    }
-
-    const embed = createEmbed({
-        title: '📋 Your Applications',
-        description:
-            `You have submitted **${applications.length}** application(s).`
-    });
-
-    applications
-        .slice(0, 10)
-        .forEach(application => {
-            const status =
-                getApplicationStatusPresentation(
-                    application.status
-                );
-
-            embed.addFields({
-                name:
-                    `${application.roleName || 'Unknown'} — ${status.statusLabel}`,
-
-                value:
-                    `**ID:** \`${application.id}\`\n` +
-                    `**Status:** ${status.statusEmoji} ${status.statusLabel}`,
-
-                inline: false
-            });
-        });
-
-    return InteractionHelper.safeEditReply(
-        interaction,
+                components: [
