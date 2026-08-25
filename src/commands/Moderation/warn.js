@@ -11,13 +11,13 @@ export default {
     data: new SlashCommandBuilder()
         .setName('warn')
         .setDescription('Warn a user')
-        .addUserOption(option =>
+        .addUserOption((option) =>
             option
                 .setName('target')
                 .setDescription('User to warn')
                 .setRequired(true)
         )
-        .addStringOption(option =>
+        .addStringOption((option) =>
             option
                 .setName('reason')
                 .setDescription('Reason for the warning')
@@ -28,6 +28,18 @@ export default {
     category: 'moderation',
 
     async execute(interaction, config, client) {
+        const deferSuccess =
+            await InteractionHelper.safeDefer(interaction);
+
+        if (!deferSuccess) {
+            logger.warn('Warn interaction defer failed', {
+                userId: interaction.user.id,
+                guildId: interaction.guildId,
+                commandName: 'warn'
+            });
+            return;
+        }
+
         const target = interaction.options.getUser('target');
         const member = interaction.options.getMember('target');
         const reason = interaction.options.getString('reason');
@@ -67,89 +79,64 @@ export default {
             'warn'
         );
 
-        /*
-         * Add the warning.
-         * WarningService keeps the warning count per server.
-         */
-        const { id, totalCount } = await WarningService.addWarning({
-            guildId,
-            userId: target.id,
-            moderatorId: moderator.id,
-            reason,
-            timestamp: Date.now()
+        const { id, totalCount } =
+            await WarningService.addWarning({
+                guildId,
+                userId: target.id,
+                moderatorId: moderator.id,
+                reason,
+                timestamp: Date.now()
+            });
+
+        await logModerationAction({
+            client,
+            guild,
+            event: {
+                action: 'User Warned',
+                target: `${target.tag} (${target.id})`,
+                executor: `${moderator.tag} (${moderator.id})`,
+                reason,
+                metadata: {
+                    userId: target.id,
+                    moderatorId: moderator.id,
+                    totalWarns: totalCount,
+                    warningNumber: totalCount,
+                    warningId: id
+                }
+            }
         });
 
-        /*
-         * Send the server response immediately.
-         * This helps prevent the interaction from expiring.
-         */
-        const serverEmbed = successEmbed(
-            `Warned ${target.tag}`,
-            `**Reason:** ${reason}\n` +
-            `**Total Warns:** ${totalCount}\n` +
-            `**Moderator:** ${moderator.tag}\n` +
-            `**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`
-        );
+        const timestamp = Math.floor(Date.now() / 1000);
 
+        // Server response
+        await InteractionHelper.safeEditReply(interaction, {
+            embeds: [
+                successEmbed(
+                    `Warned ${target.tag}`,
+                    `**Reason:** ${reason}\n` +
+                    `**Total Warns:** ${totalCount}\n` +
+                    `**Moderator:** ${moderator.tag}\n` +
+                    `**Time:** <t:${timestamp}:F>`
+                )
+            ]
+        });
+
+        // DM the warned user
         try {
-            await interaction.reply({
-                embeds: [serverEmbed]
-            });
-        } catch (error) {
-            logger.error('Failed to send warn response', {
-                userId: target.id,
-                guildId,
-                error: error.message
-            });
-        }
-
-        /*
-         * Send warning DM.
-         */
-        try {
-            const dmEmbed = warningEmbed(
-                'You Have Been Warned',
-                `You have received a warning in **${guild.name}**.\n\n` +
-                `**Reason:** ${reason}\n` +
-                `**Total Warns:** ${totalCount}\n` +
-                `**Moderator:** ${moderator.tag}\n` +
-                `**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`
-            );
-
             await target.send({
-                embeds: [dmEmbed]
+                embeds: [
+                    warningEmbed(
+                        'You Have Been Warned',
+                        `You have received a warning in **${guild.name}**.\n\n` +
+                        `**Reason:** ${reason}\n` +
+                        `**Total Warns:** ${totalCount}\n` +
+                        `**Moderator:** ${moderator.tag}\n` +
+                        `**Time:** <t:${timestamp}:F>`
+                    )
+                ]
             });
         } catch (error) {
-            logger.warn('Could not DM warned user', {
-                userId: target.id,
-                guildId,
-                error: error.message
-            });
-        }
-
-        /*
-         * Log moderation action.
-         */
-        try {
-            await logModerationAction({
-                client,
-                guild,
-                event: {
-                    action: 'User Warned',
-                    target: `${target.tag} (${target.id})`,
-                    executor: `${moderator.tag} (${moderator.id})`,
-                    reason,
-                    metadata: {
-                        userId: target.id,
-                        moderatorId: moderator.id,
-                        totalWarns: totalCount,
-                        warningNumber: totalCount,
-                        warningId: id
-                    }
-                }
-            });
-        } catch (error) {
-            logger.error('Failed to log warning', {
+            logger.warn('Failed to DM warned user', {
                 userId: target.id,
                 guildId,
                 error: error.message
