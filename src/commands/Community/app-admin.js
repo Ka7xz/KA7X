@@ -18,7 +18,7 @@ import {
 
 import {
     handleApplicationDashboard
-} from './application_apply.js';
+} from './apply.js';
 
 
 // ============================================================
