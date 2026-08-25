@@ -1,5 +1,5 @@
 import { SlashCommandBuilder, PermissionFlagsBits } from 'discord.js';
-import { successEmbed } from '../../utils/embeds.js';
+import { successEmbed, warningEmbed } from '../../utils/embeds.js';
 import { logger } from '../../utils/logger.js';
 import { TitanBotError, ErrorTypes } from '../../utils/errorHandler.js';
 import { InteractionHelper } from '../../utils/interactionHelper.js';
@@ -34,13 +34,21 @@ export default {
                     .addChoices(...durationChoices),
         )
         .addStringOption((option) =>
-            option.setName("reason").setDescription("Reason for the timeout"),
+            option
+                .setName("reason")
+                .setDescription("Reason for the timeout"),
         )
-        .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers),
+        .setDefaultMemberPermissions(
+            PermissionFlagsBits.ModerateMembers
+        ),
+
     category: "moderation",
 
     async execute(interaction, config, client) {
-        const deferSuccess = await InteractionHelper.safeDefer(interaction);
+
+        const deferSuccess =
+            await InteractionHelper.safeDefer(interaction);
+
         if (!deferSuccess) {
             logger.warn(`Timeout interaction defer failed`, {
                 userId: interaction.user.id,
@@ -50,20 +58,34 @@ export default {
             return;
         }
 
-        const targetUser = interaction.options.getUser("target");
-        const member = interaction.options.getMember("target");
-        const durationMinutes = interaction.options.getInteger("duration");
-        const reason = interaction.options.getString("reason") || "No reason provided";
+        const targetUser =
+            interaction.options.getUser("target");
 
+        const member =
+            interaction.options.getMember("target");
+
+        const durationMinutes =
+            interaction.options.getInteger("duration");
+
+        const reason =
+            interaction.options.getString("reason") ||
+            "No reason provided";
+
+
+        // Check target
         if (!targetUser) {
             throw new TitanBotError(
                 'Missing target user',
                 ErrorTypes.USER_INPUT,
                 'You must specify a user to timeout.',
-                { subtype: 'invalid_user' },
+                {
+                    subtype: 'invalid_user'
+                },
             );
         }
 
+
+        // Prevent self timeout
         if (targetUser.id === interaction.user.id) {
             throw new TitanBotError(
                 "Cannot timeout self",
@@ -71,6 +93,9 @@ export default {
                 "You cannot timeout yourself.",
             );
         }
+
+
+        // Prevent bot timeout
         if (targetUser.id === client.user.id) {
             throw new TitanBotError(
                 "Cannot timeout bot",
@@ -78,6 +103,9 @@ export default {
                 "You cannot timeout the bot.",
             );
         }
+
+
+        // Check member
         if (!member) {
             throw new TitanBotError(
                 "Target not found",
@@ -86,24 +114,70 @@ export default {
             );
         }
 
-        const durationMs = durationMinutes * 60 * 1000;
-        const result = await ModerationService.timeoutUser({
-            guild: interaction.guild,
-            member,
-            moderator: interaction.member,
-            durationMs,
-            reason,
-        });
 
+        // Calculate duration
+        const durationMs =
+            durationMinutes * 60 * 1000;
+
+
+        // Apply timeout
+        const result =
+            await ModerationService.timeoutUser({
+                guild: interaction.guild,
+                member,
+                moderator: interaction.member,
+                durationMs,
+                reason,
+            });
+
+
+        // Get readable duration
         const durationDisplay =
-            durationChoices.find((c) => c.value === durationMinutes)
-                ?.name || `${durationMinutes} minutes`;
+            durationChoices.find(
+                (c) => c.value === durationMinutes
+            )?.name ||
+            `${durationMinutes} minutes`;
 
+
+        // Send DM to timed out user
+        try {
+
+            await targetUser.send({
+                embeds: [
+                    warningEmbed(
+                        "You Have Been Timed Out",
+
+                        `You have been timed out in ***${interaction.guild.name}***.\n\n` +
+                        `**Reason:** ${reason}\n` +
+                        `**Duration:** ${durationDisplay}\n` +
+                        `**Moderator:** ${interaction.user.tag}`
+                    )
+                ]
+            });
+
+        } catch (error) {
+
+            logger.warn(
+                `Failed to DM timed out user`,
+                {
+                    userId: targetUser.id,
+                    guildId: interaction.guildId,
+                    error: error.message
+                }
+            );
+
+        }
+
+
+        // Server response
         await InteractionHelper.safeEditReply(interaction, {
             embeds: [
                 successEmbed(
-                    `⏳ **Timed out** ${targetUser.tag} for ${durationDisplay}.`,
-                    `**Reason:** ${reason}\n**Case ID:** #${result.caseId}`,
+                    `Timed out ${targetUser.tag} for ${durationDisplay}.`,
+
+                    `**Reason:** ${reason}\n` +
+                    `**Moderator:** ${interaction.user.tag}\n` +
+                    `**Case ID:** #${result.caseId}`,
                 ),
             ],
         });
