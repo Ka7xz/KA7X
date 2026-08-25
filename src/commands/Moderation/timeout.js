@@ -19,25 +19,28 @@ export default {
     data: new SlashCommandBuilder()
         .setName("timeout")
         .setDescription("Timeout a user for a specific duration.")
+
         .addUserOption((option) =>
             option
                 .setName("target")
                 .setDescription("User to timeout")
-                .setRequired(true),
+                .setRequired(true)
         )
-        .addIntegerOption(
-            (option) =>
-                option
-                    .setName("duration")
-                    .setDescription("Duration of the timeout")
-                    .setRequired(true)
-                    .addChoices(...durationChoices),
+
+        .addIntegerOption((option) =>
+            option
+                .setName("duration")
+                .setDescription("Duration of the timeout")
+                .setRequired(true)
+                .addChoices(...durationChoices)
         )
+
         .addStringOption((option) =>
             option
                 .setName("reason")
-                .setDescription("Reason for the timeout"),
+                .setDescription("Reason for the timeout")
         )
+
         .setDefaultMemberPermissions(
             PermissionFlagsBits.ModerateMembers
         ),
@@ -115,7 +118,7 @@ export default {
         }
 
 
-        // Calculate duration
+        // Convert minutes to milliseconds
         const durationMs =
             durationMinutes * 60 * 1000;
 
@@ -126,20 +129,21 @@ export default {
                 guild: interaction.guild,
                 member,
                 moderator: interaction.member,
-                durationMs,
+                duration: durationMs,
                 reason,
             });
 
 
-        // Get readable duration
+        // Display duration
         const durationDisplay =
             durationChoices.find(
-                (c) => c.value === durationMinutes
+                (choice) =>
+                    choice.value === durationMinutes
             )?.name ||
             `${durationMinutes} minutes`;
 
 
-        // Send DM to timed out user
+        // DM the timed out user
         try {
 
             await targetUser.send({
