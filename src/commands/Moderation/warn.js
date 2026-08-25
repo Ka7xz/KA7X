@@ -85,42 +85,6 @@ export default {
             timestamp: Date.now()
         });
 
-        // Server response
-        await InteractionHelper.safeEditReply(interaction, {
-            embeds: [
-                successEmbed(
-                    `Warned ${target.tag}`,
-                    `**Reason:** ${reason}\n` +
-                    `**Total Warns:** ${totalCount}\n` +
-                    `**Moderator:** ${moderator.tag}\n` +
-                    `**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`
-                ),
-            ],
-        });
-
-        // Send warning DM
-        try {
-            await target.send({
-                embeds: [
-                    warningEmbed(
-                        "You Have Been Warned",
-                        `You have received a warning in **${interaction.guild.name}**.\n\n` +
-                        `**Reason:** ${reason}\n` +
-                        `**Total Warns:** ${totalCount}\n\n` +
-                        `**Moderator:** ${moderator.tag}\n` +
-                        `**Time:** <t:${Math.floor(Date.now() / 1000)}:F>`
-                    )
-                ]
-            });
-        } catch (error) {
-            logger.warn(`Failed to DM warned user`, {
-                userId: target.id,
-                guildId,
-                error: error.message
-            });
-        }
-
-        // Moderation log
         await logModerationAction({
             client,
             guild: interaction.guild,
@@ -137,6 +101,37 @@ export default {
                     warningId: id
                 }
             }
+        });
+
+        // Send warning DM to the user
+        try {
+            await target.send({
+                embeds: [
+                    warningEmbed(
+                        "You Have Been Warned",
+                        `You have received a warning in **${interaction.guild.name}**.\n\n` +
+                        `**Reason:** ${reason}\n` +
+                        `**Total Warns:** ${totalCount}\n\n` +
+                        `**Moderator:** ${moderator.tag}`
+                    )
+                ]
+            });
+        } catch (error) {
+            logger.warn(`Failed to DM warned user`, {
+                userId: target.id,
+                guildId,
+                error: error.message
+            });
+        }
+
+        // Server warning message
+        await InteractionHelper.safeEditReply(interaction, {
+            embeds: [
+                successEmbed(
+                    `⚠️ **Warned** ${target.tag}`,
+                    `**Reason:** ${reason}\n**Total Warns:** ${totalCount}`,
+                ),
+            ],
         });
     }
 };
