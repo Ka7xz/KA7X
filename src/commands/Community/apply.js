@@ -34,7 +34,7 @@ import {
 
 
 // ============================================================
-// DEFAULT 10 QUESTIONS
+// DEFAULT QUESTIONS
 // ============================================================
 
 const DEFAULT_QUESTIONS = [
@@ -75,7 +75,7 @@ function normalizeQuestions(configuredQuestions = []) {
 
 
 // ============================================================
-// GET EXACTLY 10 QUESTIONS
+// GET 10 QUESTIONS
 // ============================================================
 
 function getQuestions(settings, roleSettings) {
@@ -86,9 +86,7 @@ function getQuestions(settings, roleSettings) {
         Array.isArray(roleSettings?.questions) &&
         roleSettings.questions.length > 0
     ) {
-        questions = normalizeQuestions(
-            roleSettings.questions
-        );
+        questions = normalizeQuestions(roleSettings.questions);
     }
 
     // Server-wide questions
@@ -97,23 +95,12 @@ function getQuestions(settings, roleSettings) {
         Array.isArray(settings?.questions) &&
         settings.questions.length > 0
     ) {
-        questions = normalizeQuestions(
-            settings.questions
-        );
+        questions = normalizeQuestions(settings.questions);
     }
 
-    // Defaults
-    if (questions.length === 0) {
-        questions = [...DEFAULT_QUESTIONS];
-    }
-
-    /*
-     * Always make sure there are exactly 10.
-     */
+    // Fill missing questions with defaults
     while (questions.length < 10) {
-        questions.push(
-            DEFAULT_QUESTIONS[questions.length]
-        );
+        questions.push(DEFAULT_QUESTIONS[questions.length]);
     }
 
     return questions.slice(0, 10);
@@ -121,7 +108,7 @@ function getQuestions(settings, roleSettings) {
 
 
 // ============================================================
-// STATUS
+// APPLICATION STATUS
 // ============================================================
 
 function getApplicationStatusPresentation(statusValue) {
@@ -157,7 +144,7 @@ function getApplicationStatusPresentation(statusValue) {
 
 
 // ============================================================
-// CREATE APPLICATION MODAL
+// CREATE MODAL
 // ============================================================
 
 function createApplicationModal(
@@ -176,11 +163,7 @@ function createApplicationModal(
             `Application: ${applicationName}`.slice(0, 45)
         );
 
-    for (
-        let i = startIndex;
-        i < endIndex;
-        i++
-    ) {
+    for (let i = startIndex; i < endIndex; i++) {
         const question = questions[i];
 
         const input = new TextInputBuilder()
@@ -204,7 +187,7 @@ function createApplicationModal(
 
 
 // ============================================================
-// COMMAND
+// /APPLY COMMAND
 // ============================================================
 
 export default {
@@ -251,8 +234,7 @@ export default {
         if (!interaction.inGuild()) {
             return replyUserError(interaction, {
                 type: ErrorTypes.UNKNOWN,
-                message:
-                    'This command can only be used in a server.'
+                message: 'This command can only be used in a server.'
             });
         }
 
@@ -309,7 +291,7 @@ async function handleList(interaction) {
     const embed = createEmbed({
         title: '📋 Staff Applications',
         description:
-            'Click the **Apply** button for the application you want to submit.\n\n' +
+            'Click an **Apply** button below to start your application.\n\n' +
             '📝 **10 questions total**\n' +
             '✅ **Question 1 is required**\n' +
             '⚪ **Questions 2–10 are optional**'
@@ -318,9 +300,6 @@ async function handleList(interaction) {
     const rows = [];
     let row = new ActionRowBuilder();
 
-    /*
-     * Maximum 5 buttons per ActionRow.
-     */
     for (
         let i = 0;
         i < applicationRoles.length && i < 25;
@@ -352,6 +331,7 @@ async function handleList(interaction) {
 
         row.addComponents(button);
 
+        // Discord allows maximum 5 buttons per row
         if (row.components.length === 5) {
             rows.push(row);
             row = new ActionRowBuilder();
@@ -378,9 +358,7 @@ async function handleList(interaction) {
 
 async function handleSubmit(interaction) {
     const applicationName =
-        interaction.options.getString(
-            'application'
-        );
+        interaction.options.getString('application');
 
     const applicationRoles =
         await getApplicationRoles(
@@ -402,7 +380,7 @@ async function handleSubmit(interaction) {
         });
     }
 
-    await showApplicationModal(
+    return showApplicationModal(
         interaction,
         applicationRole
     );
@@ -446,12 +424,12 @@ export async function showApplicationModal(
             1
         );
 
-    await interaction.showModal(modal);
+    return interaction.showModal(modal);
 }
 
 
 // ============================================================
-// APPLICATION MODAL HANDLER
+// MODAL HANDLER
 // ============================================================
 
 export async function handleApplicationModal(
@@ -468,11 +446,6 @@ export async function handleApplicationModal(
     ) {
         return;
     }
-
-    /*
-     * app_modal_1_ROLE_ID
-     * app_modal_2_ROLE_ID
-     */
 
     const parts =
         interaction.customId.split('_');
@@ -520,7 +493,7 @@ export async function handleApplicationModal(
 
 
     // ========================================================
-    // PAGE 1 — QUESTIONS 1-5
+    // PAGE 1
     // ========================================================
 
     if (page === '1') {
@@ -538,14 +511,11 @@ export async function handleApplicationModal(
             });
         }
 
-        /*
-         * Q1 is required.
-         */
+        // Q1 required
         if (!answers[0].answer) {
             return replyUserError(interaction, {
                 type: ErrorTypes.USER_INPUT,
-                message:
-                    'Question 1 is required.'
+                message: 'Question 1 is required.'
             });
         }
 
@@ -578,9 +548,7 @@ export async function handleApplicationModal(
             }
         );
 
-        /*
-         * Open Q6-Q10.
-         */
+        // Automatically open questions 6-10
         const secondModal =
             createApplicationModal(
                 roleId,
@@ -598,7 +566,7 @@ export async function handleApplicationModal(
 
 
     // ========================================================
-    // PAGE 2 — QUESTIONS 6-10
+    // PAGE 2
     // ========================================================
 
     if (page === '2') {
@@ -799,4 +767,19 @@ async function handleStatus(interaction) {
             const status =
                 getApplicationStatusPresentation(
                     application.status
-      
+                );
+
+            embed.addFields({
+                name:
+                    `${application.roleName || 'Unknown'} — ${status.statusLabel}`,
+
+                value:
+                    `**ID:** \`${application.id}\`\n` +
+                    `**Status:** ${status.statusEmoji} ${status.statusLabel}`,
+
+                inline: false
+            });
+        });
+
+    return InteractionHelper.safeEditReply(
+        interaction,
