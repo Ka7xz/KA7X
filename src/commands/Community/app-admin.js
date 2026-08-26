@@ -5,164 +5,135 @@ import {
 
 import {
     ErrorTypes,
-    replyUserError
-} from '../../utils/errorHandler.js';
-
-import {
+    replyUserError,
     withErrorHandling
 } from '../../utils/errorHandler.js';
 
-import {
-    handleApplicationSetup
-} from './appSetup.js';
+import ApplicationService from '../../services/applicationService.js';
 
 import {
-    handleApplicationDashboard
-} from './apply.js';
+    handleApplicationSetup
+} from './AppSetup.js';
 
 
 // ============================================================
-// APPLICATION ADMIN COMMAND
+// APP-ADMIN COMMAND
 // ============================================================
 
 export default {
+
     data: new SlashCommandBuilder()
         .setName('app-admin')
-        .setDescription('Manage the application system')
+        .setDescription('Manage staff applications')
 
         .setDefaultMemberPermissions(
             PermissionFlagsBits.ManageGuild
         )
 
         // ----------------------------------------------------
-        // SETUP
+        // /app-admin setup
         // ----------------------------------------------------
 
         .addSubcommand(subcommand =>
             subcommand
                 .setName('setup')
                 .setDescription(
-                    'Create a new application'
-                )
-        )
-
-        // ----------------------------------------------------
-        // DASHBOARD
-        // ----------------------------------------------------
-
-        .addSubcommand(subcommand =>
-            subcommand
-                .setName('dashboard')
-                .setDescription(
-                    'Open the application dashboard'
+                    'Create a new staff application'
                 )
         ),
 
+
     category: 'Community',
 
-    slashOnly: true,
 
-    execute: withErrorHandling(
-        async interaction => {
+    async execute(interaction) {
 
-            // =================================================
-            // SERVER CHECK
-            // =================================================
+        // ====================================================
+        // SERVER ONLY
+        // ====================================================
 
-            if (!interaction.inGuild()) {
-                return replyUserError(
-                    interaction,
-                    {
-                        type:
-                            ErrorTypes.UNKNOWN,
-
-                        message:
-                            'This command can only be used in a server.'
-                    }
-                );
-            }
-
-
-            // =================================================
-            // PERMISSION CHECK
-            // =================================================
-
-            if (
-                !interaction.memberPermissions?.has(
-                    PermissionFlagsBits.ManageGuild
-                )
-            ) {
-                return replyUserError(
-                    interaction,
-                    {
-                        type:
-                            ErrorTypes.PERMISSION,
-
-                        message:
-                            'You need the Manage Server permission to use this command.'
-                    }
-                );
-            }
-
-
-            // =================================================
-            // GET SUBCOMMAND
-            // =================================================
-
-            const subcommand =
-                interaction.options.getSubcommand();
-
-
-            // =================================================
-            // SETUP
-            // =================================================
-
-            if (
-                subcommand === 'setup'
-            ) {
-
-                return handleApplicationSetup(
-                    interaction
-                );
-            }
-
-
-            // =================================================
-            // DASHBOARD
-            // =================================================
-
-            if (
-                subcommand === 'dashboard'
-            ) {
-
-                return handleApplicationDashboard(
-                    interaction
-                );
-            }
-
-
-            // =================================================
-            // UNKNOWN
-            // =================================================
+        if (!interaction.inGuild()) {
 
             return replyUserError(
                 interaction,
                 {
                     type:
-                        ErrorTypes.USER_INPUT,
+                        ErrorTypes.UNKNOWN,
 
                     message:
-                        'Unknown application command.'
+                        'This command can only be used in a server.'
                 }
             );
-        },
-
-        {
-            type:
-                'command',
-
-            commandName:
-                'app-admin'
         }
-    )
+
+
+        // ====================================================
+        // GET SUBCOMMAND
+        // ====================================================
+
+        const subcommand =
+            interaction.options.getSubcommand();
+
+
+        // ====================================================
+        // CHECK APPLICATION MANAGER PERMISSION
+        // ====================================================
+
+        try {
+
+            await ApplicationService.checkManagerPermission(
+                interaction.client,
+                interaction.guild.id,
+                interaction.member
+            );
+
+        } catch (error) {
+
+            console.error(
+                'Application manager permission check failed:',
+                error
+            );
+
+            return replyUserError(
+                interaction,
+                {
+                    type:
+                        ErrorTypes.PERMISSION,
+
+                    message:
+                        'You do not have permission to manage applications.'
+                }
+            );
+        }
+
+
+        // ====================================================
+        // SETUP
+        // ====================================================
+
+        if (
+            subcommand === 'setup'
+        ) {
+
+            return handleApplicationSetup(
+                interaction
+            );
+        }
+
+
+        // ====================================================
+        // UNKNOWN SUBCOMMAND
+        // ====================================================
+
+        return replyUserError(
+            interaction,
+            {
+                type:
+                    ErrorTypes.USER_INPUT,
+
+                message:
+                    'Unknown application command.'
+            }
+        );
+    }
 };
