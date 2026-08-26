@@ -4,7 +4,8 @@ import {
     TextInputBuilder,
     TextInputStyle,
     RoleSelectMenuBuilder,
-    ComponentType
+    ComponentType,
+    MessageFlags
 } from 'discord.js';
 
 import {
@@ -31,44 +32,28 @@ import ApplicationService from '../../services/applicationService.js';
 // APPLICATION SETUP
 // ============================================================
 
-export async function handleApplicationSetup(interaction) {
+export async function handleApplicationSetup(
+    interaction
+) {
 
-    // ========================================================
-    // MAKE SURE INTERACTION IS NOT ALREADY ACKNOWLEDGED
-    // ========================================================
-
-    if (
-        interaction.replied ||
-        interaction.deferred
-    ) {
-        return;
-    }
-
-
-    // ========================================================
-    // SEND ROLE SELECT MENU
-    // ========================================================
+    const customId =
+        `app_setup_role:${interaction.user.id}`;
 
     const roleMenu =
         new RoleSelectMenuBuilder()
-            .setCustomId(
-                'application_setup_role'
-            )
+            .setCustomId(customId)
             .setPlaceholder(
-                'Select the application role'
+                'Select the role applicants will receive'
             )
             .setMinValues(1)
             .setMaxValues(1);
 
-
-    const roleRow =
+    const row =
         new ActionRowBuilder()
-            .addComponents(
-                roleMenu
-            );
-
+            .addComponents(roleMenu);
 
     await interaction.reply({
+
         embeds: [
             createEmbed({
                 title:
@@ -79,16 +64,15 @@ export async function handleApplicationSetup(interaction) {
             })
         ],
 
-        components: [
-            roleRow
-        ],
+        components: [row],
 
-        ephemeral: true
+        flags:
+            MessageFlags.Ephemeral
     });
 
 
     // ========================================================
-    // WAIT FOR ROLE SELECTION
+    // WAIT FOR ROLE
     // ========================================================
 
     let roleInteraction;
@@ -96,7 +80,8 @@ export async function handleApplicationSetup(interaction) {
     try {
 
         roleInteraction =
-            await interaction.channel.awaitMessageComponent({
+            await interaction.awaitMessageComponent({
+
                 componentType:
                     ComponentType.RoleSelect,
 
@@ -104,50 +89,25 @@ export async function handleApplicationSetup(interaction) {
                     120000,
 
                 filter:
-                    componentInteraction =>
-                        componentInteraction.user.id ===
+                    component =>
+                        component.user.id ===
                             interaction.user.id &&
 
-                        componentInteraction.customId ===
-                            'application_setup_role'
+                        component.customId ===
+                            customId
             });
 
     } catch {
 
         return interaction.editReply({
+
             embeds: [
                 createEmbed({
                     title:
-                        'Application Setup Expired',
+                        'Setup Expired',
 
                     description:
-                        'The setup session expired. Please run `/app-admin setup` again.'
-                })
-            ],
-
-            components: []
-        }).catch(() => {});
-    }
-
-
-    // ========================================================
-    // GET ROLE ID
-    // ========================================================
-
-    const roleId =
-        roleInteraction.values?.[0];
-
-
-    if (!roleId) {
-
-        return roleInteraction.update({
-            embeds: [
-                createEmbed({
-                    title:
-                        'Application Setup',
-
-                    description:
-                        'No role was selected.'
+                        'The setup session expired. Run `/app-admin setup` again.'
                 })
             ],
 
@@ -156,19 +116,18 @@ export async function handleApplicationSetup(interaction) {
     }
 
 
-    // ========================================================
-    // FETCH ROLE
-    // ========================================================
+    const roleId =
+        roleInteraction.values?.[0];
 
     const role =
         await interaction.guild.roles
             .fetch(roleId)
             .catch(() => null);
 
-
     if (!role) {
 
         return roleInteraction.update({
+
             embeds: [
                 createEmbed({
                     title:
@@ -185,35 +144,37 @@ export async function handleApplicationSetup(interaction) {
 
 
     // ========================================================
-    // CHECK EXISTING APPLICATION
+    // CHECK DUPLICATE
     // ========================================================
 
-    const existingRoles =
+    const existing =
         await getApplicationRoles(
             interaction.client,
             interaction.guild.id
         );
 
+    const roles =
+        Array.isArray(existing)
+            ? existing
+            : [];
 
-    const alreadyExists =
-        Array.isArray(existingRoles) &&
-        existingRoles.some(
-            application =>
-                String(application.roleId) ===
-                String(roleId)
-        );
-
-
-    if (alreadyExists) {
+    if (
+        roles.some(
+            item =>
+                String(item.roleId) ===
+                String(role.id)
+        )
+    ) {
 
         return roleInteraction.update({
+
             embeds: [
                 createEmbed({
                     title:
                         'Application Already Exists',
 
                     description:
-                        `The role ${role} is already configured as an application.`
+                        `${role} is already configured as an application.`
                 })
             ],
 
@@ -223,202 +184,110 @@ export async function handleApplicationSetup(interaction) {
 
 
     // ========================================================
-    // ACKNOWLEDGE ROLE SELECTION
+    // CONFIGURATION MODAL
     // ========================================================
 
-    await roleInteraction.update({
-        embeds: [
-            createEmbed({
-                title:
-                    'Application Setup',
-
-                description:
-                    `Selected role: ${role}\n\n` +
-                    'Opening configuration form...'
-            })
-        ],
-
-        components: []
-    });
-
-
-    // ========================================================
-    // CREATE CONFIGURATION MODAL
-    // ========================================================
+    const modalId =
+        `app_setup_modal:${role.id}:${interaction.user.id}`;
 
     const modal =
         new ModalBuilder()
-            .setCustomId(
-                `application_setup_modal:${roleId}`
-            )
+            .setCustomId(modalId)
             .setTitle(
-                'Create Application'
+                'Application Configuration'
             );
 
 
-    // ========================================================
-    // APPLICATION NAME
-    // ========================================================
-
     const nameInput =
         new TextInputBuilder()
-            .setCustomId(
-                'application_name'
-            )
-            .setLabel(
-                'Application Name'
-            )
-            .setPlaceholder(
-                'Example: Moderator'
-            )
+            .setCustomId('app_name')
+            .setLabel('Application Name')
+            .setPlaceholder('Moderator')
             .setStyle(
                 TextInputStyle.Short
             )
-            .setMinLength(1)
             .setMaxLength(50)
             .setRequired(true);
 
 
-    // ========================================================
-    // QUESTION 1
-    // ========================================================
-
-    const question1 =
+    const q1 =
         new TextInputBuilder()
-            .setCustomId(
-                'question_1'
-            )
-            .setLabel(
-                'Question 1'
-            )
+            .setCustomId('question_1')
+            .setLabel('Question 1')
             .setPlaceholder(
                 'Why do you want this role?'
             )
             .setStyle(
-                TextInputStyle.Short
+                TextInputStyle.Paragraph
             )
-            .setMaxLength(100)
+            .setMaxLength(1000)
             .setRequired(true);
 
 
-    // ========================================================
-    // QUESTION 2
-    // ========================================================
-
-    const question2 =
+    const q2 =
         new TextInputBuilder()
-            .setCustomId(
-                'question_2'
-            )
-            .setLabel(
-                'Question 2'
-            )
+            .setCustomId('question_2')
+            .setLabel('Question 2')
             .setPlaceholder(
                 'What experience do you have?'
             )
             .setStyle(
-                TextInputStyle.Short
+                TextInputStyle.Paragraph
             )
-            .setMaxLength(100)
+            .setMaxLength(1000)
             .setRequired(false);
 
 
-    // ========================================================
-    // QUESTION 3
-    // ========================================================
-
-    const question3 =
+    const q3 =
         new TextInputBuilder()
-            .setCustomId(
-                'question_3'
-            )
-            .setLabel(
-                'Question 3'
-            )
+            .setCustomId('question_3')
+            .setLabel('Question 3')
             .setPlaceholder(
                 'Why should we choose you?'
             )
             .setStyle(
-                TextInputStyle.Short
+                TextInputStyle.Paragraph
             )
-            .setMaxLength(100)
+            .setMaxLength(1000)
             .setRequired(false);
 
 
-    // ========================================================
-    // QUESTION 4
-    // ========================================================
-
-    const question4 =
+    const q4 =
         new TextInputBuilder()
-            .setCustomId(
-                'question_4'
-            )
-            .setLabel(
-                'Question 4'
-            )
+            .setCustomId('question_4')
+            .setLabel('Question 4')
             .setPlaceholder(
                 'How active are you?'
             )
             .setStyle(
-                TextInputStyle.Short
+                TextInputStyle.Paragraph
             )
-            .setMaxLength(100)
+            .setMaxLength(1000)
             .setRequired(false);
 
-
-    // ========================================================
-    // ADD MODAL COMPONENTS
-    // ========================================================
 
     modal.addComponents(
 
         new ActionRowBuilder()
-            .addComponents(
-                nameInput
-            ),
+            .addComponents(nameInput),
 
         new ActionRowBuilder()
-            .addComponents(
-                question1
-            ),
+            .addComponents(q1),
 
         new ActionRowBuilder()
-            .addComponents(
-                question2
-            ),
+            .addComponents(q2),
 
         new ActionRowBuilder()
-            .addComponents(
-                question3
-            ),
+            .addComponents(q3),
 
         new ActionRowBuilder()
-            .addComponents(
-                question4
-            )
+            .addComponents(q4)
     );
 
 
-    // ========================================================
-    // SHOW MODAL
-    // ========================================================
-
-    try {
-
-        await roleInteraction.showModal(
-            modal
-        );
-
-    } catch (error) {
-
-        console.error(
-            'Failed to open application setup modal:',
-            error
-        );
-
-        return;
-    }
+    await roleInteraction.showModal(
+        modal
+    );
 
 
     // ========================================================
@@ -436,13 +305,12 @@ export async function handleApplicationSetup(interaction) {
                     15 * 60 * 1000,
 
                 filter:
-                    modalInteraction =>
-
-                        modalInteraction.user.id ===
+                    modal =>
+                        modal.user.id ===
                             interaction.user.id &&
 
-                        modalInteraction.customId ===
-                            `application_setup_modal:${roleId}`
+                        modal.customId ===
+                            modalId
             });
 
     } catch {
@@ -452,122 +320,53 @@ export async function handleApplicationSetup(interaction) {
 
 
     // ========================================================
-    // READ APPLICATION NAME
+    // READ DATA
     // ========================================================
 
-    const applicationName =
+    const appName =
         submitted.fields
-            .getTextInputValue(
-                'application_name'
-            )
+            .getTextInputValue('app_name')
             .trim();
 
-
-    if (!applicationName) {
-
-        return replyUserError(
-            submitted,
-            {
-                type:
-                    ErrorTypes.USER_INPUT,
-
-                message:
-                    'You must enter an application name.'
-            }
-        );
-    }
-
-
-    // ========================================================
-    // READ QUESTIONS
-    // ========================================================
-
     const questions = [
-
         submitted.fields
-            .getTextInputValue(
-                'question_1'
-            )
+            .getTextInputValue('question_1')
             .trim(),
 
         submitted.fields
-            .getTextInputValue(
-                'question_2'
-            )
+            .getTextInputValue('question_2')
             .trim(),
 
         submitted.fields
-            .getTextInputValue(
-                'question_3'
-            )
+            .getTextInputValue('question_3')
             .trim(),
 
         submitted.fields
-            .getTextInputValue(
-                'question_4'
-            )
+            .getTextInputValue('question_4')
             .trim()
-
     ].filter(Boolean);
 
 
     // ========================================================
-    // GET LATEST APPLICATION ROLES
+    // SAVE ROLE
     // ========================================================
 
-    const applicationRoles =
-        await getApplicationRoles(
-            submitted.client,
-            submitted.guild.id
-        );
-
-
-    // ========================================================
-    // FINAL DUPLICATE CHECK
-    // ========================================================
-
-    if (
-        applicationRoles.some(
-            application =>
-                String(application.roleId) ===
-                String(roleId)
-        )
-    ) {
-
-        return replyUserError(
-            submitted,
-            {
-                type:
-                    ErrorTypes.CONFIGURATION,
-
-                message:
-                    `The role ${role} is already configured as an application.`
-            }
-        );
-    }
-
-
-    // ========================================================
-    // SAVE APPLICATION ROLE
-    // ========================================================
-
-    applicationRoles.push({
+    roles.push({
 
         roleId:
-            roleId,
+            String(role.id),
 
         name:
-            applicationName,
+            appName,
 
         enabled:
             true
     });
 
-
     await saveApplicationRoles(
         submitted.client,
         submitted.guild.id,
-        applicationRoles
+        roles
     );
 
 
@@ -581,15 +380,13 @@ export async function handleApplicationSetup(interaction) {
             submitted.guild.id
         );
 
-
-    if (!settings?.enabled) {
+    if (!settings.enabled) {
 
         await ApplicationService.updateSettings(
             submitted.client,
             submitted.guild.id,
             {
-                enabled:
-                    true
+                enabled: true
             }
         );
     }
@@ -602,7 +399,7 @@ export async function handleApplicationSetup(interaction) {
     await saveApplicationRoleSettings(
         submitted.client,
         submitted.guild.id,
-        roleId,
+        String(role.id),
         {
             questions
         }
@@ -613,25 +410,18 @@ export async function handleApplicationSetup(interaction) {
     // SUCCESS
     // ========================================================
 
-    await submitted.reply({
+    return submitted.reply({
 
         embeds: [
             successEmbed(
                 'Application Created',
 
-                `**${applicationName}** has been created for ${role}.\n\n` +
-                'Open the application dashboard to configure it and send the application panel.'
+                `**${appName}** has been created for ${role}.\n\n` +
+                'Use `/apply` to send the application panel.'
             )
         ],
 
-        ephemeral:
-            true
+        flags:
+            MessageFlags.Ephemeral
     });
-
-
-    // ========================================================
-    // DONE
-    // ========================================================
-
-    return true;
-      }
+        }
