@@ -45,124 +45,102 @@ const DEFAULT_QUESTIONS = [
     'Is there anything else you would like us to know?'
 ];
 
-
-// ============================================================
-// TEMPORARY APPLICATION DATA
-// ============================================================
-
 const pendingApplications = new Map();
 
 
 // ============================================================
-// NORMALIZE QUESTIONS
+// QUESTIONS
 // ============================================================
 
-function normalizeQuestions(questions = []) {
-
-    if (!Array.isArray(questions)) {
-        return [];
-    }
-
-    return questions
-        .map(question => String(question || '').trim())
-        .filter(question => question.length > 0)
-        .slice(0, 10);
-}
-
-
-// ============================================================
-// GET QUESTIONS
-// ============================================================
-
-function getQuestions(settings, roleSettings) {
+function getQuestions(
+    settings,
+    roleSettings
+) {
 
     let questions = [];
 
-
-    // Role-specific questions
     if (
         Array.isArray(roleSettings?.questions) &&
-        roleSettings.questions.length > 0
+        roleSettings.questions.length
     ) {
-        questions = normalizeQuestions(
+
+        questions =
             roleSettings.questions
-        );
+                .map(q => String(q).trim())
+                .filter(Boolean);
     }
 
-
-    // Server-wide questions
     if (
-        questions.length === 0 &&
+        !questions.length &&
         Array.isArray(settings?.questions) &&
-        settings.questions.length > 0
+        settings.questions.length
     ) {
-        questions = normalizeQuestions(
+
+        questions =
             settings.questions
-        );
+                .map(q => String(q).trim())
+                .filter(Boolean);
     }
 
-
-    // Default questions
-    if (questions.length === 0) {
+    if (!questions.length) {
         questions = [...DEFAULT_QUESTIONS];
     }
 
+    while (questions.length < 10) {
 
-    // Always make 10 questions
-    for (
-        let i = questions.length;
-        i < 10;
-        i++
-    ) {
-        questions.push(DEFAULT_QUESTIONS[i]);
+        questions.push(
+            DEFAULT_QUESTIONS[questions.length]
+        );
     }
-
 
     return questions.slice(0, 10);
 }
 
 
 // ============================================================
-// CREATE APPLICATION MODAL
+// CREATE MODAL
 // ============================================================
 
 function createApplicationModal(
     roleId,
     applicationName,
     questions,
-    startIndex,
-    endIndex,
+    start,
+    end,
     page
 ) {
 
-    const modal = new ModalBuilder()
-        .setCustomId(
-            `app_modal_${page}_${roleId}`
-        )
-        .setTitle(
-            `Application: ${applicationName}`.slice(0, 45)
-        );
-
+    const modal =
+        new ModalBuilder()
+            .setCustomId(
+                `app_modal_${page}_${roleId}`
+            )
+            .setTitle(
+                `Application: ${applicationName}`.slice(0, 45)
+            );
 
     for (
-        let i = startIndex;
-        i < endIndex;
+        let i = start;
+        i < end;
         i++
     ) {
 
-        const question = questions[i];
+        const question =
+            questions[i];
 
-        const input = new TextInputBuilder()
-            .setCustomId(`q${i}`)
-            .setLabel(
-                question.length > 45
-                    ? `${question.substring(0, 42)}...`
-                    : question
-            )
-            .setStyle(TextInputStyle.Paragraph)
-            .setRequired(i === 0)
-            .setMaxLength(1000);
-
+        const input =
+            new TextInputBuilder()
+                .setCustomId(`q${i}`)
+                .setLabel(
+                    question.length > 45
+                        ? question.slice(0, 42) + '...'
+                        : question
+                )
+                .setStyle(
+                    TextInputStyle.Paragraph
+                )
+                .setMaxLength(1000)
+                .setRequired(i === 0);
 
         modal.addComponents(
             new ActionRowBuilder()
@@ -170,29 +148,25 @@ function createApplicationModal(
         );
     }
 
-
     return modal;
 }
 
 
 // ============================================================
 // /APPLY
-//
-// Sends the application panel with Apply buttons.
 // ============================================================
 
 export default {
 
-    slashOnly: true,
+    data:
+        new SlashCommandBuilder()
+            .setName('apply')
+            .setDescription(
+                'Show available staff applications'
+            ),
 
-    data: new SlashCommandBuilder()
-        .setName('apply')
-        .setDescription(
-            'Show available staff applications'
-        ),
-
-    category: 'Community',
-
+    category:
+        'Community',
 
     async execute(interaction) {
 
@@ -201,13 +175,14 @@ export default {
             return replyUserError(
                 interaction,
                 {
-                    type: ErrorTypes.UNKNOWN,
+                    type:
+                        ErrorTypes.UNKNOWN,
+
                     message:
                         'This command can only be used in a server.'
                 }
             );
         }
-
 
         return sendApplicationPanel(
             interaction
@@ -221,98 +196,65 @@ export default {
 // ============================================================
 
 export async function sendApplicationPanel(
-    interaction,
-    targetChannel = null
+    interaction
 ) {
 
-    let applicationRoles;
-
-    try {
-
-        applicationRoles =
-            await getApplicationRoles(
-                interaction.client,
-                interaction.guild.id
-            );
-
-    } catch (error) {
-
-        console.error(
-            'Failed to load application roles:',
-            error
+    const applications =
+        await getApplicationRoles(
+            interaction.client,
+            interaction.guild.id
         );
 
-        return replyUserError(
-            interaction,
-            {
-                type: ErrorTypes.UNKNOWN,
-                message:
-                    'Unable to load applications right now.'
-            }
-        );
-    }
-
-
-    const enabledApplications =
-        Array.isArray(applicationRoles)
-            ? applicationRoles.filter(
+    const enabled =
+        Array.isArray(applications)
+            ? applications.filter(
                 application =>
                     application.enabled !== false
             )
             : [];
 
-
-    if (
-        enabledApplications.length === 0
-    ) {
+    if (!enabled.length) {
 
         return replyUserError(
             interaction,
             {
-                type: ErrorTypes.CONFIGURATION,
+                type:
+                    ErrorTypes.CONFIGURATION,
+
                 message:
                     'There are currently no applications available.'
             }
         );
     }
 
+    const embed =
+        createEmbed({
 
-    // ========================================================
-    // EMBED
-    // ========================================================
+            title:
+                'Staff Applications',
 
-    const embed = createEmbed({
+            description:
+                'Choose an application below.\n\n' +
+                'Click the Apply button for the role you want.'
+        });
 
-        title:
-            'Staff Applications',
-
-        description:
-            'Choose an application below to apply.\n\n' +
-            'Click the **Apply** button for the role you want.'
-    });
-
-
-    // ========================================================
-    // APPLICATION BUTTONS
-    // ========================================================
 
     const rows = [];
 
     let row =
         new ActionRowBuilder();
 
-
     for (
         let i = 0;
-        i < enabledApplications.length && i < 25;
+        i < Math.min(enabled.length, 25);
         i++
     ) {
 
         const application =
-            enabledApplications[i];
+            enabled[i];
 
+        row.addComponents(
 
-        const button =
             new ButtonBuilder()
                 .setCustomId(
                     `application_apply:${application.roleId}`
@@ -322,15 +264,10 @@ export async function sendApplicationPanel(
                 )
                 .setStyle(
                     ButtonStyle.Primary
-                );
+                )
+        );
 
-
-        row.addComponents(button);
-
-
-        if (
-            row.components.length === 5
-        ) {
+        if (row.components.length === 5) {
 
             rows.push(row);
 
@@ -339,36 +276,21 @@ export async function sendApplicationPanel(
         }
     }
 
-
-    if (
-        row.components.length > 0
-    ) {
-
+    if (row.components.length) {
         rows.push(row);
     }
 
+    return interaction.reply({
 
-    // ========================================================
-    // SEND
-    // ========================================================
-
-    const payload = {
         embeds: [embed],
+
         components: rows
-    };
-
-
-    if (targetChannel) {
-        return targetChannel.send(payload);
-    }
-
-
-    return interaction.reply(payload);
+    });
 }
 
 
 // ============================================================
-// SHOW APPLICATION MODAL
+// SHOW FIRST MODAL
 // ============================================================
 
 export async function showApplicationModal(
@@ -376,38 +298,11 @@ export async function showApplicationModal(
     applicationRole
 ) {
 
-    if (!interaction.inGuild()) {
-
-        return replyUserError(
-            interaction,
-            {
-                type: ErrorTypes.UNKNOWN,
-                message:
-                    'Applications can only be used in a server.'
-            }
-        );
-    }
-
-
-    if (!applicationRole) {
-
-        return replyUserError(
-            interaction,
-            {
-                type: ErrorTypes.CONFIGURATION,
-                message:
-                    'Application configuration was not found.'
-            }
-        );
-    }
-
-
     const settings =
         await getApplicationSettings(
             interaction.client,
             interaction.guild.id
         );
-
 
     const roleSettings =
         await getApplicationRoleSettings(
@@ -416,13 +311,11 @@ export async function showApplicationModal(
             applicationRole.roleId
         );
 
-
     const questions =
         getQuestions(
             settings,
             roleSettings
         );
-
 
     const modal =
         createApplicationModal(
@@ -434,13 +327,14 @@ export async function showApplicationModal(
             1
         );
 
-
-    return interaction.showModal(modal);
+    return interaction.showModal(
+        modal
+    );
 }
 
 
 // ============================================================
-// APPLICATION MODAL HANDLER
+// APPLICATION MODALS
 // ============================================================
 
 export async function handleApplicationModal(
@@ -451,7 +345,6 @@ export async function handleApplicationModal(
         return false;
     }
 
-
     if (
         !interaction.customId.startsWith(
             'app_modal_'
@@ -460,88 +353,45 @@ export async function handleApplicationModal(
         return false;
     }
 
-
-    // ========================================================
-    // READ MODAL CUSTOM ID
-    //
-    // app_modal_1_ROLE_ID
-    // app_modal_2_ROLE_ID
-    // ========================================================
-
     const parts =
         interaction.customId.split('_');
 
-
     const page =
         parts[2];
-
 
     const roleId =
         parts.slice(3).join('_');
 
 
-    // ========================================================
-    // LOAD APPLICATION ROLES
-    // ========================================================
-
-    let applicationRoles;
-
-    try {
-
-        applicationRoles =
-            await getApplicationRoles(
-                interaction.client,
-                interaction.guild.id
-            );
-
-    } catch (error) {
-
-        console.error(
-            'Failed to load application roles:',
-            error
+    const roles =
+        await getApplicationRoles(
+            interaction.client,
+            interaction.guild.id
         );
-
-        return replyUserError(
-            interaction,
-            {
-                type: ErrorTypes.UNKNOWN,
-                message:
-                    'Unable to load applications right now.'
-            }
-        );
-    }
-
-
-    // ========================================================
-    // FIND APPLICATION ROLE
-    // ========================================================
 
     const applicationRole =
-        Array.isArray(applicationRoles)
-            ? applicationRoles.find(
-                application =>
-                    String(application.roleId) ===
+        Array.isArray(roles)
+            ? roles.find(
+                item =>
+                    String(item.roleId) ===
                     String(roleId)
             )
             : null;
-
 
     if (!applicationRole) {
 
         return replyUserError(
             interaction,
             {
-                type: ErrorTypes.CONFIGURATION,
+                type:
+                    ErrorTypes.CONFIGURATION,
+
                 message:
-                    'Application configuration was not found.'
+                    'This application is no longer available.'
             }
         );
     }
 
-
-    // ========================================================
-    // LOAD QUESTIONS
-    // ========================================================
 
     const settings =
         await getApplicationSettings(
@@ -549,14 +399,12 @@ export async function handleApplicationModal(
             interaction.guild.id
         );
 
-
     const roleSettings =
         await getApplicationRoleSettings(
             interaction.client,
             interaction.guild.id,
             roleId
         );
-
 
     const questions =
         getQuestions(
@@ -567,13 +415,11 @@ export async function handleApplicationModal(
 
     // ========================================================
     // PAGE 1
-    // QUESTIONS 1-5
     // ========================================================
 
     if (page === '1') {
 
         const answers = [];
-
 
         for (
             let i = 0;
@@ -581,48 +427,40 @@ export async function handleApplicationModal(
             i++
         ) {
 
-            const answer =
-                interaction.fields
-                    .getTextInputValue(`q${i}`) || '';
-
-
             answers.push({
 
                 question:
                     questions[i],
 
                 answer:
-                    answer.trim()
+                    (
+                        interaction.fields
+                            .getTextInputValue(`q${i}`) ||
+                        ''
+                    ).trim()
             });
         }
 
-
-        // Q1 required
         if (!answers[0].answer) {
 
             return replyUserError(
                 interaction,
                 {
-                    type: ErrorTypes.USER_INPUT,
+                    type:
+                        ErrorTypes.USER_INPUT,
+
                     message:
                         'Question 1 is required.'
                 }
             );
         }
 
-
-        // ====================================================
-        // SAVE TEMPORARY APPLICATION
-        // ====================================================
-
         const key =
             `${interaction.guild.id}:${interaction.user.id}:${roleId}`;
-
 
         pendingApplications.set(
             key,
             {
-
                 guildId:
                     interaction.guild.id,
 
@@ -630,7 +468,7 @@ export async function handleApplicationModal(
                     interaction.user.id,
 
                 roleId:
-                    roleId,
+                    String(roleId),
 
                 roleName:
                     applicationRole.name,
@@ -641,20 +479,14 @@ export async function handleApplicationModal(
                 avatar:
                     interaction.user.displayAvatarURL(),
 
-                answers:
-                    answers,
+                answers,
 
                 createdAt:
                     Date.now()
             }
         );
 
-
-        // ====================================================
-        // OPEN QUESTIONS 6-10
-        // ====================================================
-
-        const secondModal =
+        return interaction.showModal(
             createApplicationModal(
                 roleId,
                 applicationRole.name,
@@ -662,18 +494,13 @@ export async function handleApplicationModal(
                 5,
                 10,
                 2
-            );
-
-
-        return interaction.showModal(
-            secondModal
+            )
         );
     }
 
 
     // ========================================================
     // PAGE 2
-    // QUESTIONS 6-10
     // ========================================================
 
     if (page === '2') {
@@ -681,28 +508,25 @@ export async function handleApplicationModal(
         const key =
             `${interaction.guild.id}:${interaction.user.id}:${roleId}`;
 
-
         const pending =
             pendingApplications.get(key);
-
 
         if (!pending) {
 
             return replyUserError(
                 interaction,
                 {
-                    type: ErrorTypes.UNKNOWN,
+                    type:
+                        ErrorTypes.UNKNOWN,
+
                     message:
-                        'Your application session expired. Please click Apply again.'
+                        'Your application session expired. Click Apply again.'
                 }
             );
         }
 
-
-        const answers = [
-            ...pending.answers
-        ];
-
+        const answers =
+            [...pending.answers];
 
         for (
             let i = 5;
@@ -710,25 +534,20 @@ export async function handleApplicationModal(
             i++
         ) {
 
-            const answer =
-                interaction.fields
-                    .getTextInputValue(`q${i}`) || '';
-
-
             answers.push({
 
                 question:
                     questions[i],
 
                 answer:
-                    answer.trim()
+                    (
+                        interaction.fields
+                            .getTextInputValue(`q${i}`) ||
+                        ''
+                    ).trim()
             });
         }
 
-
-        // ====================================================
-        // SUBMIT APPLICATION
-        // ====================================================
 
         try {
 
@@ -736,7 +555,6 @@ export async function handleApplicationModal(
                 await ApplicationService.submitApplication(
                     interaction.client,
                     {
-
                         guildId:
                             pending.guildId,
 
@@ -755,69 +573,56 @@ export async function handleApplicationModal(
                         avatar:
                             pending.avatar,
 
-                        answers:
-                            answers
+                        answers
                     }
                 );
-
 
             pendingApplications.delete(
                 key
             );
 
-
-            const embed =
-                successEmbed(
-                    'Application Submitted',
-                    `Your application for **${pending.roleName}** has been submitted successfully!\n\n` +
-                    `**Application ID:** \`${application.id}\`\n` +
-                    `**Status:** In Progress`
-                );
-
-
             return interaction.reply({
 
                 embeds: [
-                    embed
+                    successEmbed(
+                        'Application Submitted',
+
+                        `Your application for **${pending.roleName}** has been submitted.\n\n` +
+                        `Application ID: \`${application.id}\`\n` +
+                        `Status: **Pending**`
+                    )
                 ],
 
                 flags:
                     MessageFlags.Ephemeral
             });
 
-
         } catch (error) {
-
-            console.error(
-                'Application submission failed:',
-                error
-            );
-
 
             pendingApplications.delete(
                 key
             );
 
+            console.error(
+                'Application submission error:',
+                error
+            );
 
             return replyUserError(
                 interaction,
                 {
-                    type: ErrorTypes.UNKNOWN,
+                    type:
+                        ErrorTypes.UNKNOWN,
+
                     message:
-                        'Something went wrong while submitting your application.'
+                        'Your application could not be submitted.'
                 }
             );
         }
     }
 
-
     return false;
 }
-
-
-// ============================================================
-// EXPORT HELPERS
-// ============================================================
 
 export {
     getQuestions,
