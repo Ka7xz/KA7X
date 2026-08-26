@@ -72,75 +72,55 @@ export async function handleApplicationSetup(
 
 
     // ========================================================
-    // WAIT FOR ROLE
-    // ========================================================
+// WAIT FOR ROLE
+// ========================================================
 
-    let roleInteraction;
+const setupMessage = await interaction.fetchReply();
 
-    try {
+let roleInteraction;
 
-        roleInteraction =
-            await interaction.awaitMessageComponent({
+try {
 
-                componentType:
-                    ComponentType.RoleSelect,
+    roleInteraction =
+        await setupMessage.awaitMessageComponent({
 
-                time:
-                    120000,
+            componentType:
+                ComponentType.RoleSelect,
 
-                filter:
-                    component =>
-                        component.user.id ===
-                            interaction.user.id &&
+            time:
+                120000,
 
-                        component.customId ===
-                            customId
-            });
+            filter:
+                component =>
+                    component.user.id ===
+                        interaction.user.id &&
 
-    } catch {
-
-        return interaction.editReply({
-
-            embeds: [
-                createEmbed({
-                    title:
-                        'Setup Expired',
-
-                    description:
-                        'The setup session expired. Run `/app-admin setup` again.'
-                })
-            ],
-
-            components: []
+                    component.customId ===
+                        customId
         });
-    }
 
+} catch (error) {
 
-    const roleId =
-        roleInteraction.values?.[0];
+    console.error(
+        'Application setup role collector ended:',
+        error
+    );
 
-    const role =
-        await interaction.guild.roles
-            .fetch(roleId)
-            .catch(() => null);
+    return interaction.editReply({
 
-    if (!role) {
+        embeds: [
+            createEmbed({
+                title:
+                    'Setup Expired',
 
-        return roleInteraction.update({
+                description:
+                    'The setup session expired. Run `/app-admin setup` again.'
+            })
+        ],
 
-            embeds: [
-                createEmbed({
-                    title:
-                        'Application Setup',
-
-                    description:
-                        'The selected role could not be found.'
-                })
-            ],
-
-            components: []
-        });
-    }
+        components: []
+    });
+                                                 }
 
 
     // ========================================================
