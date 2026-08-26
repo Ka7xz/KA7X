@@ -45,7 +45,81 @@ const DEFAULT_QUESTIONS = [
     'Is there anything else you would like us to know?'
 ];
 
-const pendingApplications = new Map();
+
+// ============================================================
+// PENDING APPLICATIONS
+// ============================================================
+
+const pendingApplications =
+    new Map();
+
+
+// ============================================================
+// APPLICATION REQUIREMENTS
+// ============================================================
+
+const APPLICATION_REQUIREMENTS = [
+    'Be an active member of the server.',
+    'Follow all server rules and staff guidelines.',
+    'Be respectful, mature, and responsible.',
+    'Answer every question honestly.',
+    'Do not submit multiple applications for the same position.'
+];
+
+
+// ============================================================
+// APPLICATION EMOJIS
+// ============================================================
+
+function getApplicationEmoji(
+    applicationName
+) {
+
+    const name =
+        String(
+            applicationName || ''
+        ).toLowerCase();
+
+    if (
+        name.includes('admin')
+    ) {
+        return '👑';
+    }
+
+    if (
+        name.includes('moderator') ||
+        name.includes('mod')
+    ) {
+        return '🛡️';
+    }
+
+    if (
+        name.includes('helper')
+    ) {
+        return '🤝';
+    }
+
+    if (
+        name.includes('developer') ||
+        name.includes('dev')
+    ) {
+        return '💻';
+    }
+
+    if (
+        name.includes('support')
+    ) {
+        return '🎧';
+    }
+
+    if (
+        name.includes('event')
+    ) {
+        return '🎉';
+    }
+
+    return '📋';
+}
 
 
 // ============================================================
@@ -59,46 +133,74 @@ function getQuestions(
 
     let questions = [];
 
+
     if (
-        Array.isArray(roleSettings?.questions) &&
+        Array.isArray(
+            roleSettings?.questions
+        ) &&
         roleSettings.questions.length
     ) {
 
         questions =
             roleSettings.questions
-                .map(q => String(q).trim())
+                .map(
+                    q =>
+                        String(q).trim()
+                )
                 .filter(Boolean);
     }
 
+
     if (
         !questions.length &&
-        Array.isArray(settings?.questions) &&
+        Array.isArray(
+            settings?.questions
+        ) &&
         settings.questions.length
     ) {
 
         questions =
             settings.questions
-                .map(q => String(q).trim())
+                .map(
+                    q =>
+                        String(q).trim()
+                )
                 .filter(Boolean);
     }
 
-    if (!questions.length) {
-        questions = [...DEFAULT_QUESTIONS];
+
+    if (
+        !questions.length
+    ) {
+
+        questions =
+            [
+                ...DEFAULT_QUESTIONS
+            ];
     }
 
-    while (questions.length < 10) {
+
+    while (
+        questions.length < 10
+    ) {
 
         questions.push(
-            DEFAULT_QUESTIONS[questions.length]
+            DEFAULT_QUESTIONS[
+                questions.length
+            ]
         );
     }
 
-    return questions.slice(0, 10);
+
+    return questions.slice(
+        0,
+        10
+    );
 }
 
 
 // ============================================================
-// CREATE MODAL
+// CREATE APPLICATION MODAL
 // ============================================================
 
 function createApplicationModal(
@@ -116,8 +218,10 @@ function createApplicationModal(
                 `app_modal_${page}_${roleId}`
             )
             .setTitle(
-                `Application: ${applicationName}`.slice(0, 45)
+                `Application: ${applicationName}`
+                    .slice(0, 45)
             );
+
 
     for (
         let i = start;
@@ -128,25 +232,40 @@ function createApplicationModal(
         const question =
             questions[i];
 
+
         const input =
             new TextInputBuilder()
-                .setCustomId(`q${i}`)
+                .setCustomId(
+                    `q${i}`
+                )
                 .setLabel(
                     question.length > 45
-                        ? question.slice(0, 42) + '...'
+                        ? question.slice(
+                            0,
+                            42
+                        ) + '...'
                         : question
                 )
                 .setStyle(
                     TextInputStyle.Paragraph
                 )
-                .setMaxLength(1000)
-                .setRequired(i === 0);
+                .setMaxLength(
+                    1000
+                )
+                .setRequired(
+                    i === 0
+                );
+
 
         modal.addComponents(
+
             new ActionRowBuilder()
-                .addComponents(input)
+                .addComponents(
+                    input
+                )
         );
     }
+
 
     return modal;
 }
@@ -160,17 +279,24 @@ export default {
 
     data:
         new SlashCommandBuilder()
-            .setName('apply')
+            .setName(
+                'apply'
+            )
             .setDescription(
-                'Show available staff applications'
+                'View available staff applications'
             ),
 
     category:
         'Community',
 
-    async execute(interaction) {
 
-        if (!interaction.inGuild()) {
+    async execute(
+        interaction
+    ) {
+
+        if (
+            !interaction.inGuild()
+        ) {
 
             return replyUserError(
                 interaction,
@@ -183,6 +309,7 @@ export default {
                 }
             );
         }
+
 
         return sendApplicationPanel(
             interaction
@@ -205,15 +332,21 @@ export async function sendApplicationPanel(
             interaction.guild.id
         );
 
-    const enabled =
-        Array.isArray(applications)
-            ? applications.filter(
-                application =>
-                    application.enabled !== false
+
+    const configured =
+        Array.isArray(
+            applications
+        )
+            ? applications.slice(
+                0,
+                25
             )
             : [];
 
-    if (!enabled.length) {
+
+    if (
+        !configured.length
+    ) {
 
         return replyUserError(
             interaction,
@@ -222,69 +355,262 @@ export async function sendApplicationPanel(
                     ErrorTypes.CONFIGURATION,
 
                 message:
-                    'There are currently no applications available.'
+                    'There are currently no applications configured.'
             }
         );
     }
+
+
+    // ========================================================
+    // APPLICATION STATUS
+    // ========================================================
+
+    const openCount =
+        configured.filter(
+            application =>
+                application.enabled !== false
+        ).length;
+
+
+    const closedCount =
+        configured.length -
+        openCount;
+
+
+    // ========================================================
+    // MAIN PANEL
+    // ========================================================
+
+    let description =
+        '**Join Our Team**\n\n' +
+
+        'Choose the position you want to apply for. ' +
+        'Each application is reviewed by our staff team.\n\n' +
+
+        '**Requirements**\n' +
+
+        APPLICATION_REQUIREMENTS
+            .map(
+                requirement =>
+                    `• ${requirement}`
+            )
+            .join('\n') +
+
+        '\n\n' +
+
+        '**Application Status**\n' +
+
+        `🟢 **${openCount}** Open` +
+        '  •  ' +
+
+        `🔴 **${closedCount}** Closed` +
+
+        '\n\n' +
+
+        'Select an application below to begin.';
+
+
+    // ========================================================
+    // APPLICATION FIELDS
+    // ========================================================
+
+    const fields =
+        configured.map(
+            application => {
+
+                const enabled =
+                    application.enabled !== false;
+
+
+                const name =
+                    String(
+                        application.name ||
+                        'Application'
+                    )
+                        .trim()
+                        .slice(
+                            0,
+                            256
+                        );
+
+
+                const emoji =
+                    getApplicationEmoji(
+                        name
+                    );
+
+
+                const roleId =
+                    String(
+                        application.roleId
+                    );
+
+
+                const role =
+                    interaction.guild
+                        .roles.cache.get(
+                            roleId
+                        );
+
+
+                const roleText =
+                    role
+                        ? `<@&${roleId}>`
+                        : 'Role unavailable';
+
+
+                const status =
+                    enabled
+                        ? '🟢 **Open**'
+                        : '🔴 **Closed**';
+
+
+                return {
+
+                    name:
+                        `${emoji} ${name}`,
+
+                    value:
+                        `${status}\n` +
+                        `**Position:** ${roleText}\n` +
+                        `**Requirements:** Meet the server requirements and answer the application honestly.`,
+
+                    inline:
+                        false
+                };
+            }
+        );
+
+
+    // ========================================================
+    // EMBED
+    // ========================================================
 
     const embed =
         createEmbed({
 
             title:
-                'Staff Applications',
+                'Staff Recruitment',
 
-            description:
-                'Choose an application below.\n\n' +
-                'Click the Apply button for the role you want.'
+            description,
+
+            fields,
+
+            footer:
+                {
+                    text:
+                        'Select an application below to get started.'
+                }
         });
 
+
+    // ========================================================
+    // BUTTON ROWS
+    // ========================================================
 
     const rows = [];
 
     let row =
         new ActionRowBuilder();
 
+
     for (
         let i = 0;
-        i < Math.min(enabled.length, 25);
+        i < configured.length;
         i++
     ) {
 
         const application =
-            enabled[i];
+            configured[i];
 
-        row.addComponents(
 
+        const enabled =
+            application.enabled !== false;
+
+
+        const name =
+            String(
+                application.name ||
+                'Application'
+            )
+                .trim();
+
+
+        const emoji =
+            getApplicationEmoji(
+                name
+            );
+
+
+        const button =
             new ButtonBuilder()
                 .setCustomId(
                     `application_apply:${application.roleId}`
                 )
                 .setLabel(
-                    `Apply: ${application.name}`.slice(0, 80)
+                    enabled
+                        ? `Apply for ${name}`
+                            .slice(0, 80)
+                        : `Closed • ${name}`
+                            .slice(0, 80)
+                )
+                .setEmoji(
+                    emoji
                 )
                 .setStyle(
-                    ButtonStyle.Primary
+                    enabled
+                        ? ButtonStyle.Primary
+                        : ButtonStyle.Secondary
                 )
+                .setDisabled(
+                    !enabled
+                );
+
+
+        row.addComponents(
+            button
         );
 
-        if (row.components.length === 5) {
 
-            rows.push(row);
+        // Discord allows maximum 5 buttons
+        // in one action row.
+
+        if (
+            row.components.length === 5
+        ) {
+
+            rows.push(
+                row
+            );
 
             row =
                 new ActionRowBuilder();
         }
     }
 
-    if (row.components.length) {
-        rows.push(row);
+
+    if (
+        row.components.length
+    ) {
+
+        rows.push(
+            row
+        );
     }
+
+
+    // ========================================================
+    // SEND PANEL
+    // ========================================================
 
     return interaction.reply({
 
-        embeds: [embed],
+        embeds: [
+            embed
+        ],
 
-        components: rows
+        components:
+            rows
     });
 }
 
@@ -298,11 +624,33 @@ export async function showApplicationModal(
     applicationRole
 ) {
 
+    // Re-check the application status.
+    // This prevents users from applying through
+    // an old button after an admin disables it.
+
+    if (
+        applicationRole.enabled === false
+    ) {
+
+        return replyUserError(
+            interaction,
+            {
+                type:
+                    ErrorTypes.CONFIGURATION,
+
+                message:
+                    'This application is currently closed.'
+            }
+        );
+    }
+
+
     const settings =
         await getApplicationSettings(
             interaction.client,
             interaction.guild.id
         );
+
 
     const roleSettings =
         await getApplicationRoleSettings(
@@ -311,11 +659,13 @@ export async function showApplicationModal(
             applicationRole.roleId
         );
 
+
     const questions =
         getQuestions(
             settings,
             roleSettings
         );
+
 
     const modal =
         createApplicationModal(
@@ -326,6 +676,7 @@ export async function showApplicationModal(
             5,
             1
         );
+
 
     return interaction.showModal(
         modal
@@ -341,27 +692,43 @@ export async function handleApplicationModal(
     interaction
 ) {
 
-    if (!interaction.isModalSubmit()) {
+    if (
+        !interaction.isModalSubmit()
+    ) {
+
         return false;
     }
+
 
     if (
         !interaction.customId.startsWith(
             'app_modal_'
         )
     ) {
+
         return false;
     }
 
+
     const parts =
-        interaction.customId.split('_');
+        interaction.customId.split(
+            '_'
+        );
+
 
     const page =
         parts[2];
 
-    const roleId =
-        parts.slice(3).join('_');
 
+    const roleId =
+        parts
+            .slice(3)
+            .join('_');
+
+
+    // ========================================================
+    // GET APPLICATION
+    // ========================================================
 
     const roles =
         await getApplicationRoles(
@@ -369,16 +736,26 @@ export async function handleApplicationModal(
             interaction.guild.id
         );
 
+
     const applicationRole =
-        Array.isArray(roles)
+        Array.isArray(
+            roles
+        )
             ? roles.find(
                 item =>
-                    String(item.roleId) ===
-                    String(roleId)
+                    String(
+                        item.roleId
+                    ) ===
+                    String(
+                        roleId
+                    )
             )
             : null;
 
-    if (!applicationRole) {
+
+    if (
+        !applicationRole
+    ) {
 
         return replyUserError(
             interaction,
@@ -393,11 +770,37 @@ export async function handleApplicationModal(
     }
 
 
+    // ========================================================
+    // CHECK STATUS AGAIN
+    // ========================================================
+
+    if (
+        applicationRole.enabled === false
+    ) {
+
+        return replyUserError(
+            interaction,
+            {
+                type:
+                    ErrorTypes.CONFIGURATION,
+
+                message:
+                    'This application is currently closed.'
+            }
+        );
+    }
+
+
+    // ========================================================
+    // GET QUESTIONS
+    // ========================================================
+
     const settings =
         await getApplicationSettings(
             interaction.client,
             interaction.guild.id
         );
+
 
     const roleSettings =
         await getApplicationRoleSettings(
@@ -405,6 +808,7 @@ export async function handleApplicationModal(
             interaction.guild.id,
             roleId
         );
+
 
     const questions =
         getQuestions(
@@ -417,9 +821,12 @@ export async function handleApplicationModal(
     // PAGE 1
     // ========================================================
 
-    if (page === '1') {
+    if (
+        page === '1'
+    ) {
 
         const answers = [];
+
 
         for (
             let i = 0;
@@ -435,13 +842,18 @@ export async function handleApplicationModal(
                 answer:
                     (
                         interaction.fields
-                            .getTextInputValue(`q${i}`) ||
+                            .getTextInputValue(
+                                `q${i}`
+                            ) ||
                         ''
                     ).trim()
             });
         }
 
-        if (!answers[0].answer) {
+
+        if (
+            !answers[0].answer
+        ) {
 
             return replyUserError(
                 interaction,
@@ -455,12 +867,17 @@ export async function handleApplicationModal(
             );
         }
 
+
         const key =
-            `${interaction.guild.id}:${interaction.user.id}:${roleId}`;
+            `${interaction.guild.id}:` +
+            `${interaction.user.id}:` +
+            `${roleId}`;
+
 
         pendingApplications.set(
             key,
             {
+
                 guildId:
                     interaction.guild.id,
 
@@ -468,7 +885,9 @@ export async function handleApplicationModal(
                     interaction.user.id,
 
                 roleId:
-                    String(roleId),
+                    String(
+                        roleId
+                    ),
 
                 roleName:
                     applicationRole.name,
@@ -477,7 +896,8 @@ export async function handleApplicationModal(
                     interaction.user.tag,
 
                 avatar:
-                    interaction.user.displayAvatarURL(),
+                    interaction.user
+                        .displayAvatarURL(),
 
                 answers,
 
@@ -486,7 +906,9 @@ export async function handleApplicationModal(
             }
         );
 
+
         return interaction.showModal(
+
             createApplicationModal(
                 roleId,
                 applicationRole.name,
@@ -495,6 +917,7 @@ export async function handleApplicationModal(
                 10,
                 2
             )
+
         );
     }
 
@@ -503,15 +926,25 @@ export async function handleApplicationModal(
     // PAGE 2
     // ========================================================
 
-    if (page === '2') {
+    if (
+        page === '2'
+    ) {
 
         const key =
-            `${interaction.guild.id}:${interaction.user.id}:${roleId}`;
+            `${interaction.guild.id}:` +
+            `${interaction.user.id}:` +
+            `${roleId}`;
+
 
         const pending =
-            pendingApplications.get(key);
+            pendingApplications.get(
+                key
+            );
 
-        if (!pending) {
+
+        if (
+            !pending
+        ) {
 
             return replyUserError(
                 interaction,
@@ -525,8 +958,12 @@ export async function handleApplicationModal(
             );
         }
 
+
         const answers =
-            [...pending.answers];
+            [
+                ...pending.answers
+            ];
+
 
         for (
             let i = 5;
@@ -542,7 +979,9 @@ export async function handleApplicationModal(
                 answer:
                     (
                         interaction.fields
-                            .getTextInputValue(`q${i}`) ||
+                            .getTextInputValue(
+                                `q${i}`
+                            ) ||
                         ''
                     ).trim()
             });
@@ -552,79 +991,4 @@ export async function handleApplicationModal(
         try {
 
             const application =
-                await ApplicationService.submitApplication(
-                    interaction.client,
-                    {
-                        guildId:
-                            pending.guildId,
-
-                        userId:
-                            pending.userId,
-
-                        roleId:
-                            pending.roleId,
-
-                        roleName:
-                            pending.roleName,
-
-                        username:
-                            pending.username,
-
-                        avatar:
-                            pending.avatar,
-
-                        answers
-                    }
-                );
-
-            pendingApplications.delete(
-                key
-            );
-
-            return interaction.reply({
-
-                embeds: [
-                    successEmbed(
-                        'Application Submitted',
-
-                        `Your application for **${pending.roleName}** has been submitted.\n\n` +
-                        `Application ID: \`${application.id}\`\n` +
-                        `Status: **Pending**`
-                    )
-                ],
-
-                flags:
-                    MessageFlags.Ephemeral
-            });
-
-        } catch (error) {
-
-            pendingApplications.delete(
-                key
-            );
-
-            console.error(
-                'Application submission error:',
-                error
-            );
-
-            return replyUserError(
-                interaction,
-                {
-                    type:
-                        ErrorTypes.UNKNOWN,
-
-                    message:
-                        'Your application could not be submitted.'
-                }
-            );
-        }
-    }
-
-    return false;
-}
-
-export {
-    getQuestions,
-    createApplicationModal
-};
+   
