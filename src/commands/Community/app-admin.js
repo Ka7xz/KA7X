@@ -14,7 +14,7 @@ import {
 
 import {
     handleApplicationSetup
-} from './App-setup.js';
+} from './appSetup.js';
 
 import {
     handleApplicationDashboard
