@@ -9,6 +9,7 @@ import {
 } from '../config/bot.js';
 import botConfig from '../config/bot.js';
 import { handleApplicationModal } from '../commands/Community/apply.js';
+import { handleApplicationButton } from '../commands/Community/application_apply.js';
 import { handleInteractionError, createError, ErrorTypes, ErrorCodes } from '../utils/errorHandler.js';
 import { InteractionHelper } from '../utils/interactionHelper.js';
 import { createInteractionTraceContext, runWithTraceContext } from '../utils/logger.js';
@@ -307,6 +308,14 @@ export default {
             }
           }
         } else if (interaction.isButton()) {
+                    const applicationButtonHandled =
+            await handleApplicationButton(
+              interaction
+            );
+
+          if (applicationButtonHandled) {
+            return;
+          }
           if (interaction.customId.startsWith('shared_todo_')) {
             const parts = interaction.customId.split('_');
             const buttonType = parts.slice(0, 3).join('_');
