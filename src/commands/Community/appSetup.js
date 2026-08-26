@@ -71,7 +71,7 @@ export async function handleApplicationSetup(
     });
 
 
-    // ========================================================
+// ========================================================
 // WAIT FOR ROLE
 // ========================================================
 
@@ -81,48 +81,72 @@ let roleInteraction;
 
 try {
 
-    roleInteraction =
-        await setupMessage.awaitMessageComponent({
+roleInteraction =  
+    await setupMessage.awaitMessageComponent({  
 
-            componentType:
-                ComponentType.RoleSelect,
+        componentType:  
+            ComponentType.RoleSelect,  
 
-            time:
-                120000,
+        time:  
+            120000,  
 
-            filter:
-                component =>
-                    component.user.id ===
-                        interaction.user.id &&
+        filter:  
+            component =>  
+                component.user.id ===  
+                    interaction.user.id &&  
 
-                    component.customId ===
-                        customId
-        });
+                component.customId ===  
+                    customId  
+    });
 
 } catch (error) {
 
-    console.error(
-        'Application setup role collector ended:',
-        error
-    );
+console.error(  
+    'Application setup role collector ended:',  
+    error  
+);  
 
-    return interaction.editReply({
+return interaction.editReply({  
 
-        embeds: [
-            createEmbed({
-                title:
-                    'Setup Expired',
+    embeds: [  
+        createEmbed({  
+            title:  
+                'Setup Expired',  
 
-                description:
-                    'The setup session expired. Run `/app-admin setup` again.'
-            })
-        ],
+            description:  
+                'The setup session expired. Run `/app-admin setup` again.'  
+        })  
+    ],  
 
-        components: []
-    });
-                                                 }
+    components: []  
+});
 
+}
 
+// ========================================================
+// GET SELECTED ROLE
+// ========================================================
+
+const role = roleInteraction.roles.first();
+
+if (!role) {
+
+return roleInteraction.update({  
+
+    embeds: [  
+        createEmbed({  
+            title:  
+                'Invalid Role',  
+
+            description:  
+                'No valid role was selected.'  
+        })  
+    ],  
+
+    components: []  
+});
+
+}
     // ========================================================
     // CHECK DUPLICATE
     // ========================================================
