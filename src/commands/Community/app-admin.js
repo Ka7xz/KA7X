@@ -8,7 +8,8 @@ import {
     TextInputBuilder,
     TextInputStyle,
     RoleSelectMenuBuilder,
-    ComponentType
+    ComponentType,
+    MessageFlags
 } from 'discord.js';
 
 import {
@@ -27,8 +28,7 @@ import {
     getApplicationSettings,
     saveApplicationRoleSettings,
     getApplications,
-    getApplication,
-    deleteApplication
+    getApplication
 } from '../../utils/database.js';
 
 import ApplicationService from '../../services/applicationService.js';
@@ -37,7 +37,7 @@ import { logger } from '../../utils/logger.js';
 
 
 // ============================================================
-// APP-ADMIN COMMAND
+// APP-ADMIN
 // ============================================================
 
 export default {
@@ -69,13 +69,13 @@ export default {
             subcommand
                 .setName('list')
                 .setDescription(
-                    'List applications'
+                    'List submitted applications'
                 )
                 .addStringOption(option =>
                     option
                         .setName('status')
                         .setDescription(
-                            'Filter by application status'
+                            'Filter applications by status'
                         )
                         .addChoices(
                             {
@@ -96,7 +96,7 @@ export default {
                     option
                         .setName('user')
                         .setDescription(
-                            'Filter by user'
+                            'Filter by applicant'
                         )
                 )
         )
@@ -109,7 +109,7 @@ export default {
             subcommand
                 .setName('review')
                 .setDescription(
-                    'Review an application'
+                    'Review a submitted application'
                 )
                 .addStringOption(option =>
                     option
@@ -126,7 +126,6 @@ export default {
     async execute(interaction) {
 
         if (!interaction.inGuild()) {
-
             return replyUserError(
                 interaction,
                 {
@@ -147,7 +146,6 @@ export default {
             // =================================================
 
             if (subcommand === 'setup') {
-
                 return await handleApplicationSetup(
                     interaction
                 );
@@ -159,7 +157,6 @@ export default {
             // =================================================
 
             if (subcommand === 'list') {
-
                 return await handleApplicationList(
                     interaction
                 );
@@ -171,7 +168,6 @@ export default {
             // =================================================
 
             if (subcommand === 'review') {
-
                 return await handleApplicationReview(
                     interaction
                 );
@@ -191,10 +187,9 @@ export default {
             );
 
             if (
-                interaction.deferred ||
-                interaction.replied
+                interaction.replied ||
+                interaction.deferred
             ) {
-
                 return;
             }
 
@@ -215,26 +210,25 @@ export default {
 // APPLICATION SETUP
 // ============================================================
 
-async function handleApplicationSetup(
-    interaction
-) {
+async function handleApplicationSetup(interaction) {
 
-    // --------------------------------------------------------
-    // Send role selector
-    // --------------------------------------------------------
+    /*
+     * STEP 1
+     * Show role selector.
+     */
 
     const roleSelect =
         new RoleSelectMenuBuilder()
             .setCustomId(
-                'app_admin_setup_role'
+                `app_setup_role_${interaction.user.id}`
             )
             .setPlaceholder(
-                'Select the application role'
+                'Select the role users will apply for'
             )
             .setMinValues(1)
             .setMaxValues(1);
 
-    const row =
+    const roleRow =
         new ActionRowBuilder()
             .addComponents(
                 roleSelect
@@ -246,19 +240,20 @@ async function handleApplicationSetup(
             createEmbed({
                 title: 'Application Setup',
                 description:
-                    'Select the Discord role that users will apply for.'
+                    'Select the Discord role that applicants will be applying for.'
             })
         ],
         components: [
-            row
+            roleRow
         ],
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
     });
 
 
-    // --------------------------------------------------------
-    // Wait for role selection
-    // --------------------------------------------------------
+    /*
+     * STEP 2
+     * Wait for role selection.
+     */
 
     let roleInteraction;
 
@@ -278,12 +273,13 @@ async function handleApplicationSetup(
                         component.user.id ===
                             interaction.user.id &&
                         component.customId ===
-                            'app_admin_setup_role'
+                            `app_setup_role_${interaction.user.id}`
             });
 
     } catch {
 
         return interaction.editReply({
+
             embeds: [
                 createEmbed({
                     title:
@@ -299,16 +295,14 @@ async function handleApplicationSetup(
     }
 
 
-    // --------------------------------------------------------
-    // Get role
-    // --------------------------------------------------------
-
     const roleId =
         roleInteraction.values?.[0];
+
 
     if (!roleId) {
 
         return roleInteraction.update({
+
             embeds: [
                 createEmbed({
                     title:
@@ -324,6 +318,11 @@ async function handleApplicationSetup(
     }
 
 
+    /*
+     * STEP 3
+     * Verify role.
+     */
+
     const role =
         await interaction.guild.roles
             .fetch(roleId)
@@ -333,6 +332,7 @@ async function handleApplicationSetup(
     if (!role) {
 
         return roleInteraction.update({
+
             embeds: [
                 createEmbed({
                     title:
@@ -348,9 +348,10 @@ async function handleApplicationSetup(
     }
 
 
-    // --------------------------------------------------------
-    // Check duplicate
-    // --------------------------------------------------------
+    /*
+     * STEP 4
+     * Check duplicate.
+     */
 
     const existingRoles =
         await getApplicationRoles(
@@ -358,11 +359,16 @@ async function handleApplicationSetup(
             interaction.guild.id
         );
 
+    const roles =
+        Array.isArray(existingRoles)
+            ? existingRoles
+            : [];
+
+
     const alreadyExists =
-        Array.isArray(existingRoles) &&
-        existingRoles.some(
-            app =>
-                String(app.roleId) ===
+        roles.some(
+            application =>
+                String(application.roleId) ===
                 String(roleId)
         );
 
@@ -370,6 +376,7 @@ async function handleApplicationSetup(
     if (alreadyExists) {
 
         return roleInteraction.update({
+
             embeds: [
                 createEmbed({
                     title:
@@ -385,11 +392,13 @@ async function handleApplicationSetup(
     }
 
 
-    // --------------------------------------------------------
-    // Acknowledge selection
-    // --------------------------------------------------------
+    /*
+     * STEP 5
+     * Update selector message.
+     */
 
     await roleInteraction.update({
+
         embeds: [
             createEmbed({
                 title:
@@ -397,7 +406,7 @@ async function handleApplicationSetup(
 
                 description:
                     `Selected role: ${role}\n\n` +
-                    'Opening configuration form...'
+                    'Opening the configuration form...'
             })
         ],
 
@@ -405,23 +414,22 @@ async function handleApplicationSetup(
     });
 
 
-    // ========================================================
-    // CONFIGURATION MODAL
-    // ========================================================
+    /*
+     * STEP 6
+     * Configuration modal.
+     *
+     * No LabelBuilder is used.
+     */
 
     const modal =
         new ModalBuilder()
             .setCustomId(
-                `app_admin_setup_modal_${roleId}`
+                `app_setup_modal_${roleId}_${interaction.user.id}`
             )
             .setTitle(
                 'Application Configuration'
             );
 
-
-    // --------------------------------------------------------
-    // Application name
-    // --------------------------------------------------------
 
     const nameInput =
         new TextInputBuilder()
@@ -431,20 +439,16 @@ async function handleApplicationSetup(
             .setLabel(
                 'Application Name'
             )
-            .setStyle(
-                TextInputStyle.Short
-            )
             .setPlaceholder(
                 'Moderator'
+            )
+            .setStyle(
+                TextInputStyle.Short
             )
             .setMinLength(1)
             .setMaxLength(50)
             .setRequired(true);
 
-
-    // --------------------------------------------------------
-    // Question 1
-    // --------------------------------------------------------
 
     const question1 =
         new TextInputBuilder()
@@ -454,19 +458,15 @@ async function handleApplicationSetup(
             .setLabel(
                 'Question 1'
             )
-            .setStyle(
-                TextInputStyle.Paragraph
-            )
             .setPlaceholder(
                 'Why do you want this role?'
+            )
+            .setStyle(
+                TextInputStyle.Paragraph
             )
             .setMaxLength(1000)
             .setRequired(true);
 
-
-    // --------------------------------------------------------
-    // Question 2
-    // --------------------------------------------------------
 
     const question2 =
         new TextInputBuilder()
@@ -476,19 +476,15 @@ async function handleApplicationSetup(
             .setLabel(
                 'Question 2'
             )
-            .setStyle(
-                TextInputStyle.Paragraph
-            )
             .setPlaceholder(
                 'What experience do you have?'
+            )
+            .setStyle(
+                TextInputStyle.Paragraph
             )
             .setMaxLength(1000)
             .setRequired(false);
 
-
-    // --------------------------------------------------------
-    // Question 3
-    // --------------------------------------------------------
 
     const question3 =
         new TextInputBuilder()
@@ -498,16 +494,15 @@ async function handleApplicationSetup(
             .setLabel(
                 'Question 3'
             )
+            .setPlaceholder(
+                'Why should we choose you?'
+            )
             .setStyle(
                 TextInputStyle.Paragraph
             )
             .setMaxLength(1000)
             .setRequired(false);
 
-
-    // --------------------------------------------------------
-    // Question 4
-    // --------------------------------------------------------
 
     const question4 =
         new TextInputBuilder()
@@ -516,6 +511,9 @@ async function handleApplicationSetup(
             )
             .setLabel(
                 'Question 4'
+            )
+            .setPlaceholder(
+                'How active are you?'
             )
             .setStyle(
                 TextInputStyle.Paragraph
@@ -544,9 +542,10 @@ async function handleApplicationSetup(
     );
 
 
-    // --------------------------------------------------------
-    // Show modal
-    // --------------------------------------------------------
+    /*
+     * STEP 7
+     * Show modal.
+     */
 
     try {
 
@@ -560,7 +559,12 @@ async function handleApplicationSetup(
             'Failed to show application setup modal',
             {
                 error: error.message,
-                stack: error.stack
+                stack: error.stack,
+                guildId:
+                    interaction.guild.id,
+                userId:
+                    interaction.user.id,
+                roleId
             }
         );
 
@@ -568,9 +572,10 @@ async function handleApplicationSetup(
     }
 
 
-    // ========================================================
-    // WAIT FOR MODAL
-    // ========================================================
+    /*
+     * STEP 8
+     * Wait for modal submission.
+     */
 
     let submitted;
 
@@ -587,7 +592,7 @@ async function handleApplicationSetup(
                         modalInteraction.user.id ===
                             interaction.user.id &&
                         modalInteraction.customId ===
-                            `app_admin_setup_modal_${roleId}`
+                            `app_setup_modal_${roleId}_${interaction.user.id}`
             });
 
     } catch {
@@ -599,7 +604,9 @@ async function handleApplicationSetup(
                     interaction.guild.id,
 
                 userId:
-                    interaction.user.id
+                    interaction.user.id,
+
+                roleId
             }
         );
 
@@ -607,9 +614,10 @@ async function handleApplicationSetup(
     }
 
 
-    // ========================================================
-    // READ MODAL
-    // ========================================================
+    /*
+     * STEP 9
+     * Read submitted values.
+     */
 
     const appName =
         submitted.fields
@@ -645,12 +653,16 @@ async function handleApplicationSetup(
             )
             .trim()
 
-    ].filter(Boolean);
+    ].filter(
+        question =>
+            question.length > 0
+    );
 
 
-    // ========================================================
-    // SAVE ROLE
-    // ========================================================
+    /*
+     * STEP 10
+     * Final duplicate check.
+     */
 
     const currentRoles =
         await getApplicationRoles(
@@ -658,11 +670,16 @@ async function handleApplicationSetup(
             submitted.guild.id
         );
 
+    const finalRoles =
+        Array.isArray(currentRoles)
+            ? currentRoles
+            : [];
+
 
     if (
-        currentRoles.some(
-            app =>
-                String(app.roleId) ===
+        finalRoles.some(
+            application =>
+                String(application.roleId) ===
                 String(roleId)
         )
     ) {
@@ -680,7 +697,12 @@ async function handleApplicationSetup(
     }
 
 
-    currentRoles.push({
+    /*
+     * STEP 11
+     * Save application role.
+     */
+
+    finalRoles.push({
 
         roleId:
             String(roleId),
@@ -696,13 +718,14 @@ async function handleApplicationSetup(
     await saveApplicationRoles(
         submitted.client,
         submitted.guild.id,
-        currentRoles
+        finalRoles
     );
 
 
-    // ========================================================
-    // ENABLE SYSTEM
-    // ========================================================
+    /*
+     * STEP 12
+     * Enable application system.
+     */
 
     const settings =
         await getApplicationSettings(
@@ -723,9 +746,10 @@ async function handleApplicationSetup(
     }
 
 
-    // ========================================================
-    // SAVE QUESTIONS
-    // ========================================================
+    /*
+     * STEP 13
+     * Save questions.
+     */
 
     await saveApplicationRoleSettings(
         submitted.client,
@@ -737,9 +761,10 @@ async function handleApplicationSetup(
     );
 
 
-    // ========================================================
-    // SUCCESS
-    // ========================================================
+    /*
+     * STEP 14
+     * Success.
+     */
 
     await submitted.reply({
 
@@ -748,11 +773,12 @@ async function handleApplicationSetup(
                 'Application Created',
 
                 `**${appName}** has been created for ${role}.\n\n` +
-                'Use `/apply` to display the application panel.'
+                'Use `/apply` to send the application panel.'
             )
         ],
 
-        ephemeral: true
+        flags:
+            MessageFlags.Ephemeral
     });
 }
 
@@ -761,9 +787,7 @@ async function handleApplicationSetup(
 // APPLICATION LIST
 // ============================================================
 
-async function handleApplicationList(
-    interaction
-) {
+async function handleApplicationList(interaction) {
 
     const status =
         interaction.options.getString(
@@ -791,20 +815,26 @@ async function handleApplicationList(
         );
 
 
+    if (!Array.isArray(applications)) {
+        applications = [];
+    }
+
+
     if (user) {
 
         applications =
             applications.filter(
-                app =>
-                    String(app.userId) ===
+                application =>
+                    String(application.userId) ===
                     String(user.id)
             );
     }
 
 
-    if (!applications.length) {
+    if (applications.length === 0) {
 
         return interaction.reply({
+
             embeds: [
                 createEmbed({
                     title:
@@ -815,7 +845,8 @@ async function handleApplicationList(
                 })
             ],
 
-            ephemeral: true
+            flags:
+                MessageFlags.Ephemeral
         });
     }
 
@@ -824,8 +855,8 @@ async function handleApplicationList(
         applications
             .slice(0, 20)
             .map(
-                app =>
-                    `\`${app.id}\` — <@${app.userId}> — **${app.roleName}** — ${app.status}`
+                application =>
+                    `\`${application.id}\` — <@${application.userId}> — **${application.roleName}** — ${application.status}`
             );
 
 
@@ -841,7 +872,8 @@ async function handleApplicationList(
             })
         ],
 
-        ephemeral: true
+        flags:
+            MessageFlags.Ephemeral
     });
 }
 
@@ -850,5 +882,56 @@ async function handleApplicationList(
 // APPLICATION REVIEW
 // ============================================================
 
-async function handleApplicationReview(
-    interactio
+async function handleApplicationReview(interaction) {
+
+    const applicationId =
+        interaction.options.getString(
+            'id'
+        );
+
+
+    const application =
+        await getApplication(
+            interaction.client,
+            interaction.guild.id,
+            applicationId
+        );
+
+
+    if (!application) {
+
+        return replyUserError(
+            interaction,
+            {
+                type:
+                    ErrorTypes.USER_INPUT,
+
+                message:
+                    'Application not found.'
+            }
+        );
+    }
+
+
+    if (
+        application.status !==
+        'pending'
+    ) {
+
+        return replyUserError(
+            interaction,
+            {
+                type:
+                    ErrorTypes.USER_INPUT,
+
+                message:
+                    'This application has already been processed.'
+            }
+        );
+    }
+
+
+    const approveButton =
+        new ButtonBuilder()
+            .setCustomId(
+                `
