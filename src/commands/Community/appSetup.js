@@ -31,9 +31,7 @@ import ApplicationService from '../../services/applicationService.js';
 // APPLICATION SETUP
 // ============================================================
 
-export async function handleApplicationSetup(
-    interaction
-) {
+export async function handleApplicationSetup(interaction) {
 
     // ========================================================
     // MAKE SURE INTERACTION IS NOT ALREADY ACKNOWLEDGED
