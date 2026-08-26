@@ -112,8 +112,9 @@ export default {
         // ====================================================
 
         if (
-            subcommand === 'setup'
-        ) {
+            if (subcommand === 'setup') {
+    return handleApplicationSetup(interaction);
+        } {
 
             return handleApplicationSetup(
                 interaction
