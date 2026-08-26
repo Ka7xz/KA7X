@@ -41,7 +41,6 @@ const DEFAULT_QUESTIONS = [
     'How would you handle a difficult member?',
     'How would you handle a conflict between members?',
     'What would you do if another staff member broke a rule?',
-    'What makes you a good fit for this role?',
     'Is there anything else you would like us to know?'
 ];
 
