@@ -4,17 +4,11 @@ import {
     ActionRowBuilder,
     ButtonBuilder,
     ButtonStyle,
-    ModalBuilder,
-    TextInputBuilder,
-    TextInputStyle,
-    RoleSelectMenuBuilder,
-    ComponentType,
     MessageFlags
 } from 'discord.js';
 
 import {
-    createEmbed,
-    successEmbed
+    createEmbed
 } from '../../utils/embeds.js';
 
 import {
@@ -23,47 +17,35 @@ import {
 } from '../../utils/errorHandler.js';
 
 import {
-    getApplicationRoles,
-    saveApplicationRoles,
-    getApplicationSettings,
-    saveApplicationRoleSettings,
     getApplications,
     getApplication
 } from '../../utils/database.js';
 
+import {
+    handleApplicationSetup
+} from './appSetup.js';
+
 import ApplicationService from '../../services/applicationService.js';
 
 import { logger } from '../../utils/logger.js';
-
-
-// ============================================================
-// APP-ADMIN
-// ============================================================
 
 export default {
 
     data: new SlashCommandBuilder()
         .setName('app-admin')
         .setDescription('Manage staff applications')
+
         .setDefaultMemberPermissions(
             PermissionFlagsBits.ManageGuild
         )
-
-        // ----------------------------------------------------
-        // SETUP
-        // ----------------------------------------------------
 
         .addSubcommand(subcommand =>
             subcommand
                 .setName('setup')
                 .setDescription(
-                    'Create a new staff application'
+                    'Create a staff application'
                 )
         )
-
-        // ----------------------------------------------------
-        // LIST
-        // ----------------------------------------------------
 
         .addSubcommand(subcommand =>
             subcommand
@@ -71,11 +53,12 @@ export default {
                 .setDescription(
                     'List submitted applications'
                 )
+
                 .addStringOption(option =>
                     option
                         .setName('status')
                         .setDescription(
-                            'Filter applications by status'
+                            'Application status'
                         )
                         .addChoices(
                             {
@@ -92,6 +75,7 @@ export default {
                             }
                         )
                 )
+
                 .addUserOption(option =>
                     option
                         .setName('user')
@@ -101,16 +85,13 @@ export default {
                 )
         )
 
-        // ----------------------------------------------------
-        // REVIEW
-        // ----------------------------------------------------
-
         .addSubcommand(subcommand =>
             subcommand
                 .setName('review')
                 .setDescription(
-                    'Review a submitted application'
+                    'Review an application'
                 )
+
                 .addStringOption(option =>
                     option
                         .setName('id')
@@ -126,6 +107,7 @@ export default {
     async execute(interaction) {
 
         if (!interaction.inGuild()) {
+
             return replyUserError(
                 interaction,
                 {
@@ -141,34 +123,23 @@ export default {
 
         try {
 
-            // =================================================
-            // SETUP
-            // =================================================
-
             if (subcommand === 'setup') {
-                return await handleApplicationSetup(
+
+                return handleApplicationSetup(
                     interaction
                 );
             }
-
-
-            // =================================================
-            // LIST
-            // =================================================
 
             if (subcommand === 'list') {
-                return await handleApplicationList(
+
+                return handleApplicationList(
                     interaction
                 );
             }
 
-
-            // =================================================
-            // REVIEW
-            // =================================================
-
             if (subcommand === 'review') {
-                return await handleApplicationReview(
+
+                return handleApplicationReview(
                     interaction
                 );
             }
@@ -176,7 +147,7 @@ export default {
         } catch (error) {
 
             logger.error(
-                'App-admin command failed',
+                'Application admin command error',
                 {
                     error: error.message,
                     stack: error.stack,
@@ -207,598 +178,18 @@ export default {
 
 
 // ============================================================
-// APPLICATION SETUP
+// LIST APPLICATIONS
 // ============================================================
 
-async function handleApplicationSetup(interaction) {
-
-    /*
-     * STEP 1
-     * Show role selector.
-     */
-
-    const roleSelect =
-        new RoleSelectMenuBuilder()
-            .setCustomId(
-                `app_setup_role_${interaction.user.id}`
-            )
-            .setPlaceholder(
-                'Select the role users will apply for'
-            )
-            .setMinValues(1)
-            .setMaxValues(1);
-
-    const roleRow =
-        new ActionRowBuilder()
-            .addComponents(
-                roleSelect
-            );
-
-
-    await interaction.reply({
-        embeds: [
-            createEmbed({
-                title: 'Application Setup',
-                description:
-                    'Select the Discord role that applicants will be applying for.'
-            })
-        ],
-        components: [
-            roleRow
-        ],
-        flags: MessageFlags.Ephemeral
-    });
-
-
-    /*
-     * STEP 2
-     * Wait for role selection.
-     */
-
-    let roleInteraction;
-
-    try {
-
-        roleInteraction =
-            await interaction.channel.awaitMessageComponent({
-
-                componentType:
-                    ComponentType.RoleSelect,
-
-                time:
-                    120000,
-
-                filter:
-                    component =>
-                        component.user.id ===
-                            interaction.user.id &&
-                        component.customId ===
-                            `app_setup_role_${interaction.user.id}`
-            });
-
-    } catch {
-
-        return interaction.editReply({
-
-            embeds: [
-                createEmbed({
-                    title:
-                        'Application Setup Expired',
-
-                    description:
-                        'The setup session expired. Run `/app-admin setup` again.'
-                })
-            ],
-
-            components: []
-        });
-    }
-
-
-    const roleId =
-        roleInteraction.values?.[0];
-
-
-    if (!roleId) {
-
-        return roleInteraction.update({
-
-            embeds: [
-                createEmbed({
-                    title:
-                        'Application Setup',
-
-                    description:
-                        'No role was selected.'
-                })
-            ],
-
-            components: []
-        });
-    }
-
-
-    /*
-     * STEP 3
-     * Verify role.
-     */
-
-    const role =
-        await interaction.guild.roles
-            .fetch(roleId)
-            .catch(() => null);
-
-
-    if (!role) {
-
-        return roleInteraction.update({
-
-            embeds: [
-                createEmbed({
-                    title:
-                        'Application Setup',
-
-                    description:
-                        'The selected role could not be found.'
-                })
-            ],
-
-            components: []
-        });
-    }
-
-
-    /*
-     * STEP 4
-     * Check duplicate.
-     */
-
-    const existingRoles =
-        await getApplicationRoles(
-            interaction.client,
-            interaction.guild.id
-        );
-
-    const roles =
-        Array.isArray(existingRoles)
-            ? existingRoles
-            : [];
-
-
-    const alreadyExists =
-        roles.some(
-            application =>
-                String(application.roleId) ===
-                String(roleId)
-        );
-
-
-    if (alreadyExists) {
-
-        return roleInteraction.update({
-
-            embeds: [
-                createEmbed({
-                    title:
-                        'Application Already Exists',
-
-                    description:
-                        `The role ${role} is already configured as an application.`
-                })
-            ],
-
-            components: []
-        });
-    }
-
-
-    /*
-     * STEP 5
-     * Update selector message.
-     */
-
-    await roleInteraction.update({
-
-        embeds: [
-            createEmbed({
-                title:
-                    'Application Setup',
-
-                description:
-                    `Selected role: ${role}\n\n` +
-                    'Opening the configuration form...'
-            })
-        ],
-
-        components: []
-    });
-
-
-    /*
-     * STEP 6
-     * Configuration modal.
-     *
-     * No LabelBuilder is used.
-     */
-
-    const modal =
-        new ModalBuilder()
-            .setCustomId(
-                `app_setup_modal_${roleId}_${interaction.user.id}`
-            )
-            .setTitle(
-                'Application Configuration'
-            );
-
-
-    const nameInput =
-        new TextInputBuilder()
-            .setCustomId(
-                'app_name'
-            )
-            .setLabel(
-                'Application Name'
-            )
-            .setPlaceholder(
-                'Moderator'
-            )
-            .setStyle(
-                TextInputStyle.Short
-            )
-            .setMinLength(1)
-            .setMaxLength(50)
-            .setRequired(true);
-
-
-    const question1 =
-        new TextInputBuilder()
-            .setCustomId(
-                'question_1'
-            )
-            .setLabel(
-                'Question 1'
-            )
-            .setPlaceholder(
-                'Why do you want this role?'
-            )
-            .setStyle(
-                TextInputStyle.Paragraph
-            )
-            .setMaxLength(1000)
-            .setRequired(true);
-
-
-    const question2 =
-        new TextInputBuilder()
-            .setCustomId(
-                'question_2'
-            )
-            .setLabel(
-                'Question 2'
-            )
-            .setPlaceholder(
-                'What experience do you have?'
-            )
-            .setStyle(
-                TextInputStyle.Paragraph
-            )
-            .setMaxLength(1000)
-            .setRequired(false);
-
-
-    const question3 =
-        new TextInputBuilder()
-            .setCustomId(
-                'question_3'
-            )
-            .setLabel(
-                'Question 3'
-            )
-            .setPlaceholder(
-                'Why should we choose you?'
-            )
-            .setStyle(
-                TextInputStyle.Paragraph
-            )
-            .setMaxLength(1000)
-            .setRequired(false);
-
-
-    const question4 =
-        new TextInputBuilder()
-            .setCustomId(
-                'question_4'
-            )
-            .setLabel(
-                'Question 4'
-            )
-            .setPlaceholder(
-                'How active are you?'
-            )
-            .setStyle(
-                TextInputStyle.Paragraph
-            )
-            .setMaxLength(1000)
-            .setRequired(false);
-
-
-    modal.addComponents(
-
-        new ActionRowBuilder()
-            .addComponents(nameInput),
-
-        new ActionRowBuilder()
-            .addComponents(question1),
-
-        new ActionRowBuilder()
-            .addComponents(question2),
-
-        new ActionRowBuilder()
-            .addComponents(question3),
-
-        new ActionRowBuilder()
-            .addComponents(question4)
-
-    );
-
-
-    /*
-     * STEP 7
-     * Show modal.
-     */
-
-    try {
-
-        await roleInteraction.showModal(
-            modal
-        );
-
-    } catch (error) {
-
-        logger.error(
-            'Failed to show application setup modal',
-            {
-                error: error.message,
-                stack: error.stack,
-                guildId:
-                    interaction.guild.id,
-                userId:
-                    interaction.user.id,
-                roleId
-            }
-        );
-
-        return;
-    }
-
-
-    /*
-     * STEP 8
-     * Wait for modal submission.
-     */
-
-    let submitted;
-
-    try {
-
-        submitted =
-            await roleInteraction.awaitModalSubmit({
-
-                time:
-                    15 * 60 * 1000,
-
-                filter:
-                    modalInteraction =>
-                        modalInteraction.user.id ===
-                            interaction.user.id &&
-                        modalInteraction.customId ===
-                            `app_setup_modal_${roleId}_${interaction.user.id}`
-            });
-
-    } catch {
-
-        logger.info(
-            'Application setup modal expired',
-            {
-                guildId:
-                    interaction.guild.id,
-
-                userId:
-                    interaction.user.id,
-
-                roleId
-            }
-        );
-
-        return;
-    }
-
-
-    /*
-     * STEP 9
-     * Read submitted values.
-     */
-
-    const appName =
-        submitted.fields
-            .getTextInputValue(
-                'app_name'
-            )
-            .trim();
-
-
-    const questions = [
-
-        submitted.fields
-            .getTextInputValue(
-                'question_1'
-            )
-            .trim(),
-
-        submitted.fields
-            .getTextInputValue(
-                'question_2'
-            )
-            .trim(),
-
-        submitted.fields
-            .getTextInputValue(
-                'question_3'
-            )
-            .trim(),
-
-        submitted.fields
-            .getTextInputValue(
-                'question_4'
-            )
-            .trim()
-
-    ].filter(
-        question =>
-            question.length > 0
-    );
-
-
-    /*
-     * STEP 10
-     * Final duplicate check.
-     */
-
-    const currentRoles =
-        await getApplicationRoles(
-            submitted.client,
-            submitted.guild.id
-        );
-
-    const finalRoles =
-        Array.isArray(currentRoles)
-            ? currentRoles
-            : [];
-
-
-    if (
-        finalRoles.some(
-            application =>
-                String(application.roleId) ===
-                String(roleId)
-        )
-    ) {
-
-        return replyUserError(
-            submitted,
-            {
-                type:
-                    ErrorTypes.CONFIGURATION,
-
-                message:
-                    `The role ${role} is already configured as an application.`
-            }
-        );
-    }
-
-
-    /*
-     * STEP 11
-     * Save application role.
-     */
-
-    finalRoles.push({
-
-        roleId:
-            String(roleId),
-
-        name:
-            appName,
-
-        enabled:
-            true
-    });
-
-
-    await saveApplicationRoles(
-        submitted.client,
-        submitted.guild.id,
-        finalRoles
-    );
-
-
-    /*
-     * STEP 12
-     * Enable application system.
-     */
-
-    const settings =
-        await getApplicationSettings(
-            submitted.client,
-            submitted.guild.id
-        );
-
-
-    if (!settings?.enabled) {
-
-        await ApplicationService.updateSettings(
-            submitted.client,
-            submitted.guild.id,
-            {
-                enabled: true
-            }
-        );
-    }
-
-
-    /*
-     * STEP 13
-     * Save questions.
-     */
-
-    await saveApplicationRoleSettings(
-        submitted.client,
-        submitted.guild.id,
-        String(roleId),
-        {
-            questions
-        }
-    );
-
-
-    /*
-     * STEP 14
-     * Success.
-     */
-
-    await submitted.reply({
-
-        embeds: [
-            successEmbed(
-                'Application Created',
-
-                `**${appName}** has been created for ${role}.\n\n` +
-                'Use `/apply` to send the application panel.'
-            )
-        ],
-
-        flags:
-            MessageFlags.Ephemeral
-    });
-}
-
-
-// ============================================================
-// APPLICATION LIST
-// ============================================================
-
-async function handleApplicationList(interaction) {
+async function handleApplicationList(
+    interaction
+) {
 
     const status =
-        interaction.options.getString(
-            'status'
-        );
+        interaction.options.getString('status');
 
     const user =
-        interaction.options.getUser(
-            'user'
-        );
-
+        interaction.options.getUser('user');
 
     const filters = {};
 
@@ -806,59 +197,49 @@ async function handleApplicationList(interaction) {
         filters.status = status;
     }
 
+    if (user) {
+        filters.userId = user.id;
+    }
 
-    let applications =
+    const applications =
         await getApplications(
             interaction.client,
             interaction.guild.id,
             filters
         );
 
-
-    if (!Array.isArray(applications)) {
-        applications = [];
-    }
-
-
-    if (user) {
-
-        applications =
-            applications.filter(
-                application =>
-                    String(application.userId) ===
-                    String(user.id)
-            );
-    }
-
-
-    if (applications.length === 0) {
+    if (
+        !Array.isArray(applications) ||
+        applications.length === 0
+    ) {
 
         return interaction.reply({
-
             embeds: [
                 createEmbed({
-                    title:
-                        'Applications',
-
+                    title: 'Applications',
                     description:
                         'No applications were found.'
                 })
             ],
-
-            flags:
-                MessageFlags.Ephemeral
+            flags: MessageFlags.Ephemeral
         });
     }
-
 
     const lines =
         applications
             .slice(0, 20)
-            .map(
-                application =>
-                    `\`${application.id}\` — <@${application.userId}> — **${application.roleName}** — ${application.status}`
-            );
+            .map(application => {
 
+                const applicant =
+                    `<@${application.userId}>`;
+
+                return (
+                    `\`${application.id}\` ` +
+                    `— ${applicant} ` +
+                    `— **${application.roleName || 'Unknown'}** ` +
+                    `— **${application.status}**`
+                );
+            });
 
     return interaction.reply({
 
@@ -879,16 +260,15 @@ async function handleApplicationList(interaction) {
 
 
 // ============================================================
-// APPLICATION REVIEW
+// REVIEW APPLICATION
 // ============================================================
 
-async function handleApplicationReview(interaction) {
+async function handleApplicationReview(
+    interaction
+) {
 
     const applicationId =
-        interaction.options.getString(
-            'id'
-        );
-
+        interaction.options.getString('id');
 
     const application =
         await getApplication(
@@ -897,41 +277,99 @@ async function handleApplicationReview(interaction) {
             applicationId
         );
 
-
     if (!application) {
 
         return replyUserError(
             interaction,
             {
-                type:
-                    ErrorTypes.USER_INPUT,
-
+                type: ErrorTypes.USER_INPUT,
                 message:
                     'Application not found.'
             }
         );
     }
 
+    const embed =
+        createEmbed({
+            title:
+                'Application Review',
 
-    if (
-        application.status !==
-        'pending'
-    ) {
+            description:
+                `**Application ID:** \`${application.id}\`\n` +
+                `**Applicant:** <@${application.userId}>\n` +
+                `**Role:** ${application.roleName || 'Unknown'}\n` +
+                `**Status:** ${application.status}\n\n` +
+                formatAnswers(application.answers)
+        });
 
-        return replyUserError(
-            interaction,
-            {
-                type:
-                    ErrorTypes.USER_INPUT,
+    if (application.status !== 'pending') {
 
-                message:
-                    'This application has already been processed.'
-            }
-        );
+        return interaction.reply({
+
+            embeds: [embed],
+
+            flags:
+                MessageFlags.Ephemeral
+        });
     }
 
-
-    const approveButton =
+    const approve =
         new ButtonBuilder()
             .setCustomId(
-                `
+                `app_review:approve:${application.id}`
+            )
+            .setLabel('Approve')
+            .setStyle(
+                ButtonStyle.Success
+            );
+
+    const deny =
+        new ButtonBuilder()
+            .setCustomId(
+                `app_review:deny:${application.id}`
+            )
+            .setLabel('Deny')
+            .setStyle(
+                ButtonStyle.Danger
+            );
+
+    const row =
+        new ActionRowBuilder()
+            .addComponents(
+                approve,
+                deny
+            );
+
+    return interaction.reply({
+
+        embeds: [embed],
+
+        components: [row],
+
+        flags:
+            MessageFlags.Ephemeral
+    });
+}
+
+
+// ============================================================
+// FORMAT ANSWERS
+// ============================================================
+
+function formatAnswers(
+    answers
+) {
+
+    if (!Array.isArray(answers)) {
+
+        return 'No answers were recorded.';
+    }
+
+    return answers
+        .map(
+            item =>
+                `**${item.question}**\n${item.answer || 'No answer'}`
+        )
+        .join('\n\n')
+        .slice(0, 4000);
+            }
