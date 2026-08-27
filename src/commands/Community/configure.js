@@ -774,6 +774,7 @@ export async function handleConfigureModal(
                 successEmbed(
                     'Application Updated',
                     `The application name is now **${
+                        { 
      // ========================================================
     // EDIT APPLICATION QUESTIONS
     // ========================================================
@@ -782,7 +783,7 @@ export async function handleConfigureModal(
         interaction.customId.startsWith(
             'configure_questions:'
         )
-    ) {
+                        {
 
         const parts =
             interaction.customId.split(':');
