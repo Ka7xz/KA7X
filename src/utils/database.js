@@ -1025,4 +1025,35 @@ export async function getUserLevelData(
                 data.level || 0,
 
             totalXp:
-                data.
+                                data.totalXp || 0,
+
+            lastMessage:
+                data.lastMessage || 0,
+
+            rank:
+                data.rank || 0,
+
+            xpToNextLevel:
+                getXpForLevel(
+                    (data.level || 0) + 1
+                )
+        };
+
+    } catch (error) {
+
+        logger.error(
+            `Error getting user level data for ${guildId}/${userId}:`,
+            error
+        );
+
+        return {
+            xp: 0,
+            level: 0,
+            totalXp: 0,
+            lastMessage: 0,
+            rank: 0,
+            xpToNextLevel:
+                getXpForLevel(1)
+        };
+    }
+}
