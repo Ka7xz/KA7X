@@ -39,7 +39,7 @@ export default {
     data: new SlashCommandBuilder()
         .setName('configure')
         .setDescription(
-            'Manage staff applications'
+            'Configure staff applications'
         )
 
         .setDefaultMemberPermissions(
