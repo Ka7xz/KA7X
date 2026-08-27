@@ -22,57 +22,42 @@ import {
     getApplicationRoles,
     saveApplicationRoles,
     getApplicationSettings,
+    saveApplicationSettings,
     saveApplicationRoleSettings
 } from '../../utils/database.js';
 
 import ApplicationService from '../../services/applicationService.js';
 
-
 // ============================================================
 // APPLICATION SETUP
-// Creates a new staff application
 // ============================================================
 
 export async function handleApplicationSetup(
     interaction
 ) {
-
     if (!interaction.inGuild()) {
-
         return replyUserError(
             interaction,
             {
                 type:
                     ErrorTypes.UNKNOWN,
-
                 message:
                     'This setup can only be used inside a server.'
             }
         );
     }
 
-
-    // ========================================================
-    // SETUP SESSION ID
-    // ========================================================
-
     const customId =
         `app_setup_role:${interaction.user.id}`;
-
-
-    // ========================================================
-    // ROLE SELECT MENU
-    // ========================================================
 
     const roleMenu =
         new RoleSelectMenuBuilder()
             .setCustomId(customId)
             .setPlaceholder(
-                'Select the role applicants will receive'
+                'Select the role applicants will apply for'
             )
             .setMinValues(1)
             .setMaxValues(1);
-
 
     const row =
         new ActionRowBuilder()
@@ -80,36 +65,19 @@ export async function handleApplicationSetup(
                 roleMenu
             );
 
-
-    // ========================================================
-    // SEND SETUP MESSAGE
-    // ========================================================
-
     await interaction.reply({
-
         embeds: [
-
             createEmbed({
-
                 title:
                     'Create Application',
-
                 description:
                     'Select the Discord role that applicants will apply for.'
             })
-
         ],
-
-        components: [
-            row
-        ],
-
+        components: [row],
         flags:
             MessageFlags.Ephemeral
     });
-      // ========================================================
-    // WAIT FOR ROLE SELECTION
-    // ========================================================
 
     const setupMessage =
         await interaction.fetchReply();
@@ -117,118 +85,70 @@ export async function handleApplicationSetup(
     let roleInteraction;
 
     try {
-
         roleInteraction =
             await setupMessage.awaitMessageComponent({
-
                 componentType:
                     ComponentType.RoleSelect,
-
                 time:
                     120000,
-
                 filter:
                     component =>
                         component.user.id ===
                             interaction.user.id &&
-
                         component.customId ===
                             customId
             });
-
-    } catch (error) {
-
+    } catch {
         return interaction.editReply({
-
             embeds: [
-
                 createEmbed({
-
                     title:
                         'Setup Expired',
-
                     description:
-                        'The setup session expired. ' +
-                        'Please run the setup command again.'
+                        'The setup session expired. Please run `/app-admin setup` again.'
                 })
-
             ],
-
             components: []
         });
     }
-
-
-    // ========================================================
-    // GET SELECTED ROLE
-    // ========================================================
 
     const role =
         roleInteraction.roles.first();
 
-
     if (!role) {
-
         return roleInteraction.update({
-
             embeds: [
-
                 createEmbed({
-
                     title:
                         'Invalid Role',
-
                     description:
                         'No valid role was selected.'
                 })
-
             ],
-
             components: []
         });
     }
 
-
-    // ========================================================
-    // CHECK BOT ROLE HIERARCHY
-    // ========================================================
-
     const botMember =
         interaction.guild.members.me;
-
 
     if (
         botMember &&
         role.position >=
             botMember.roles.highest.position
     ) {
-
         return roleInteraction.update({
-
             embeds: [
-
                 createEmbed({
-
                     title:
                         'Role Too High',
-
                     description:
-                        `I cannot manage ${role} because ` +
-                        `my bot role is not above it.\n\n` +
-                        `Move my bot role above ${role} ` +
-                        `and try again.`
+                        `I cannot manage ${role} because my bot role is not above it.`
                 })
-
             ],
-
             components: []
         });
     }
-
-
-    // ========================================================
-    // LOAD EXISTING APPLICATION ROLES
-    // ========================================================
 
     const existing =
         await getApplicationRoles(
@@ -236,16 +156,10 @@ export async function handleApplicationSetup(
             interaction.guild.id
         );
 
-
     const roles =
         Array.isArray(existing)
             ? existing
             : [];
-
-
-    // ========================================================
-    // CHECK DUPLICATE
-    // ========================================================
 
     const alreadyExists =
         roles.some(
@@ -254,42 +168,34 @@ export async function handleApplicationSetup(
                 String(role.id)
         );
 
-
     if (alreadyExists) {
-
         return roleInteraction.update({
-
             embeds: [
-
                 createEmbed({
-
                     title:
                         'Application Already Exists',
-
                     description:
-                        `${role} already has an application configured.\n\n` +
-                        'Use `/configure applications` to edit it.'
+                        `${role} already has an application configured.`
                 })
-
             ],
-
             components: []
         });
     }
 
-
-    // ========================================================
-    // CONTINUE TO APPLICATION FORM
-    // ========================================================
-
     return showApplicationSetupModal(
         roleInteraction,
         role
-    ); async function showApplicationSetupModal(
+    );
+}
+
+// ============================================================
+// APPLICATION CREATION MODAL
+// ============================================================
+
+async function showApplicationSetupModal(
     interaction,
     role
 ) {
-
     const modalId =
         `app_setup_modal:${role.id}:${interaction.user.id}`;
 
@@ -299,11 +205,6 @@ export async function handleApplicationSetup(
             .setTitle(
                 'Create Application'
             );
-
-
-    // ========================================================
-    // APPLICATION NAME
-    // ========================================================
 
     const nameInput =
         new TextInputBuilder()
@@ -322,11 +223,6 @@ export async function handleApplicationSetup(
             .setMaxLength(50)
             .setRequired(true);
 
-
-    // ========================================================
-    // QUESTION 1
-    // ========================================================
-
     const question1 =
         new TextInputBuilder()
             .setCustomId(
@@ -343,11 +239,6 @@ export async function handleApplicationSetup(
             )
             .setMaxLength(1000)
             .setRequired(true);
-
-
-    // ========================================================
-    // QUESTION 2
-    // ========================================================
 
     const question2 =
         new TextInputBuilder()
@@ -366,11 +257,6 @@ export async function handleApplicationSetup(
             .setMaxLength(1000)
             .setRequired(false);
 
-
-    // ========================================================
-    // QUESTION 3
-    // ========================================================
-
     const question3 =
         new TextInputBuilder()
             .setCustomId(
@@ -388,11 +274,6 @@ export async function handleApplicationSetup(
             .setMaxLength(1000)
             .setRequired(false);
 
-
-    // ========================================================
-    // QUESTION 4
-    // ========================================================
-
     const question4 =
         new TextInputBuilder()
             .setCustomId(
@@ -403,14 +284,42 @@ export async function handleApplicationSetup(
             )
             .setPlaceholder(
                 'How active are you?'
-              // ============================================================
-// HANDLE APPLICATION SETUP MODAL
+            )
+            .setStyle(
+                TextInputStyle.Paragraph
+            )
+            .setMaxLength(1000)
+            .setRequired(false);
+
+    modal.addComponents(
+        new ActionRowBuilder()
+            .addComponents(nameInput),
+
+        new ActionRowBuilder()
+            .addComponents(question1),
+
+        new ActionRowBuilder()
+            .addComponents(question2),
+
+        new ActionRowBuilder()
+            .addComponents(question3),
+
+        new ActionRowBuilder()
+            .addComponents(question4)
+    );
+
+    return interaction.showModal(
+        modal
+    );
+}
+
+// ============================================================
+// HANDLE SETUP MODAL
 // ============================================================
 
 export async function handleApplicationSetupModal(
     interaction
 ) {
-
     if (!interaction.isModalSubmit()) {
         return false;
     }
@@ -432,21 +341,15 @@ export async function handleApplicationSetupModal(
     const ownerId =
         parts[2];
 
-    // ========================================================
-    // VERIFY OWNER
-    // ========================================================
-
     if (
         ownerId !==
         interaction.user.id
     ) {
-
         await replyUserError(
             interaction,
             {
                 type:
                     ErrorTypes.PERMISSION,
-
                 message:
                     'You cannot use this application setup form.'
             }
@@ -454,10 +357,6 @@ export async function handleApplicationSetupModal(
 
         return true;
     }
-
-    // ========================================================
-    // GET APPLICATION NAME
-    // ========================================================
 
     const applicationName =
         interaction.fields
@@ -467,13 +366,11 @@ export async function handleApplicationSetupModal(
             .trim();
 
     if (!applicationName) {
-
         await replyUserError(
             interaction,
             {
                 type:
                     ErrorTypes.USER_INPUT,
-
                 message:
                     'Application name cannot be empty.'
             }
@@ -482,16 +379,14 @@ export async function handleApplicationSetupModal(
         return true;
     }
 
-    // ========================================================
-    // GET QUESTIONS
-    // ========================================================
-
     const questions = [];
 
-    for (let i = 1; i <= 4; i++) {
-
+    for (
+        let i = 1;
+        i <= 4;
+        i++
+    ) {
         try {
-
             const question =
                 interaction.fields
                     .getTextInputValue(
@@ -501,27 +396,23 @@ export async function handleApplicationSetupModal(
 
             if (question) {
                 questions.push(
-                    question.substring(0, 1000)
+                    question.substring(
+                        0,
+                        1000
+                    )
                 );
             }
-
         } catch {
             // Optional question was not submitted.
         }
     }
 
-    // ========================================================
-    // REQUIRE QUESTION 1
-    // ========================================================
-
     if (questions.length === 0) {
-
         await replyUserError(
             interaction,
             {
                 type:
                     ErrorTypes.USER_INPUT,
-
                 message:
                     'At least one application question is required.'
             }
@@ -529,10 +420,6 @@ export async function handleApplicationSetupModal(
 
         return true;
     }
-
-    // ========================================================
-    // LOAD CURRENT APPLICATION ROLES
-    // ========================================================
 
     const existing =
         await getApplicationRoles(
@@ -545,72 +432,87 @@ export async function handleApplicationSetupModal(
             ? existing
             : [];
 
-    // ========================================================
-    // CHECK DUPLICATE AGAIN
-    // ========================================================
-
-    const alreadyExists =
+    if (
         roles.some(
             application =>
                 String(application.roleId) ===
                 String(roleId)
-        );
-    if (alreadyExists) {
-
+        )
+    ) {
         return replyUserError(
             interaction,
             {
                 type:
                     ErrorTypes.USER_INPUT,
-
                 message:
                     'An application for this role already exists.'
             }
         );
     }
 
+    const role =
+        await interaction.guild.roles
+            .fetch(roleId)
+            .catch(() => null);
 
-    // ========================================================
-    // SAVE APPLICATION ROLE
-    // ========================================================
-
-    roles.push({
-
+    const roleEntry = {
         roleId:
             String(roleId),
 
         name:
-            applicationName.substring(0, 50),
+            applicationName.substring(
+                0,
+                50
+            ),
 
         enabled:
             true
-    });
+    };
 
-
-    await saveApplicationRoles(
-        interaction.client,
-        interaction.guild.id,
-        roles
+    roles.push(
+        roleEntry
     );
 
+    const rolesSaved =
+        await saveApplicationRoles(
+            interaction.client,
+            interaction.guild.id,
+            roles
+        );
 
-    // ========================================================
-    // SAVE APPLICATION QUESTIONS
-    // ========================================================
+    if (!rolesSaved) {
+        return replyUserError(
+            interaction,
+            {
+                type:
+                    ErrorTypes.DATABASE,
+                message:
+                    'I could not save the application role.'
+            }
+        );
+    }
 
-    await saveApplicationRoleSettings(
-        interaction.client,
-        interaction.guild.id,
-        String(roleId),
-        {
-            questions
-        }
-    );
+    const settingsSaved =
+        await saveApplicationRoleSettings(
+            interaction.client,
+            interaction.guild.id,
+            String(roleId),
+            {
+                questions
+            }
+        );
 
-
-    // ========================================================
-    // ENABLE APPLICATION SYSTEM
-    // ========================================================
+    if (!settingsSaved) {
+        return replyUserError(
+            interaction,
+            {
+                type:
+                    ErrorTypes.DATABASE,
+                message:
+                    'The application role was saved, but I could not save its questions.'
+            }
+        );
+    }
 
     const settings =
         await getApplicationSettings(
@@ -618,9 +520,7 @@ export async function handleApplicationSetupModal(
             interaction.guild.id
         );
 
-
-    if (!settings?.enabled) {
-
+    if (!settings.enabled) {
         await ApplicationService.updateSettings(
             interaction.client,
             interaction.guild.id,
@@ -630,41 +530,18 @@ export async function handleApplicationSetupModal(
         );
     }
 
-
-    // ========================================================
-    // GET ROLE
-    // ========================================================
-
-    const role =
-        await interaction.guild.roles
-            .fetch(roleId)
-            .catch(() => null);
-
-
-    // ========================================================
-    // SUCCESS
-    // ========================================================
-
     return interaction.reply({
-
         embeds: [
-
             successEmbed(
-
                 'Application Created',
-
                 `**${applicationName}** has been created` +
                 `${role ? ` for ${role}` : ''}.\n\n` +
-
                 `**Questions:** ${questions.length}\n` +
-
                 '**Status:** Enabled\n\n' +
-
-                'Use `/configure applications` to edit it.'
+                'Users can now submit applications for this role.'
             )
         ],
-
         flags:
             MessageFlags.Ephemeral
-      });
-}
+    });
+                }
