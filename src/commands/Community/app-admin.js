@@ -37,7 +37,7 @@ import { logger } from '../../utils/logger.js';
 export default {
 
     data: new SlashCommandBuilder()
-        .setName('app-admin')
+        .setName('configure')
         .setDescription(
             'Manage staff applications'
         )
