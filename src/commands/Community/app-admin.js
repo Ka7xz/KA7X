@@ -1,7 +1,10 @@
 import {
     SlashCommandBuilder,
     PermissionFlagsBits,
-    MessageFlags
+    MessageFlags,
+    ActionRowBuilder,
+    ButtonBuilder,
+    ButtonStyle
 } from 'discord.js';
 
 import {
@@ -20,13 +23,11 @@ import {
     getApplication
 } from '../../utils/database.js';
 
-
-// ============================================================
-// /APP-ADMIN
-// ============================================================
+import {
+    handleApplicationSetup
+} from './appSetup.js';
 
 export default {
-
     data:
         new SlashCommandBuilder()
             .setName('app-admin')
@@ -37,9 +38,13 @@ export default {
                 PermissionFlagsBits.ManageGuild
             )
 
-            // ================================================
-            // LIST
-            // ================================================
+            .addSubcommand(subcommand =>
+                subcommand
+                    .setName('setup')
+                    .setDescription(
+                        'Create a new staff application'
+                    )
+            )
 
             .addSubcommand(subcommand =>
                 subcommand
@@ -47,12 +52,11 @@ export default {
                     .setDescription(
                         'List submitted applications'
                     )
-
                     .addStringOption(option =>
                         option
                             .setName('status')
                             .setDescription(
-                                'Filter applications by status'
+                                'Filter by application status'
                             )
                             .addChoices(
                                 {
@@ -69,27 +73,21 @@ export default {
                                 }
                             )
                     )
-
                     .addUserOption(option =>
                         option
                             .setName('user')
                             .setDescription(
-                                'Filter applications by user'
+                                'Filter by applicant'
                             )
                     )
             )
-
-            // ================================================
-            // REVIEW
-            // ================================================
 
             .addSubcommand(subcommand =>
                 subcommand
                     .setName('review')
                     .setDescription(
-                        'Review a submitted application'
+                        'Review an application'
                     )
-
                     .addStringOption(option =>
                         option
                             .setName('id')
@@ -100,88 +98,62 @@ export default {
                     )
             ),
 
-    category:
-        'Community',
-      // ========================================================
-    // EXECUTE
-    // ========================================================
+    category: 'Community',
 
     async execute(interaction) {
-
         if (!interaction.inGuild()) {
-
             return replyUserError(
                 interaction,
                 {
-                    type:
-                        ErrorTypes.UNKNOWN,
-
+                    type: ErrorTypes.UNKNOWN,
                     message:
                         'This command can only be used inside a server.'
                 }
             );
         }
 
-
         try {
-
-            // ================================================
-            // CHECK PERMISSION
-            // ================================================
-
             await ApplicationService.checkManagerPermission(
                 interaction.client,
                 interaction.guild.id,
                 interaction.member
             );
 
-
             const subcommand =
                 interaction.options.getSubcommand();
 
-
-            // ================================================
-            // LIST
-            // ================================================
+            if (subcommand === 'setup') {
+                return handleApplicationSetup(
+                    interaction
+                );
+            }
 
             if (subcommand === 'list') {
-
                 return handleApplicationList(
                     interaction
                 );
             }
 
-
-            // ================================================
-            // REVIEW
-            // ================================================
-
             if (subcommand === 'review') {
-
                 return handleApplicationReview(
                     interaction
                 );
             }
-
 
             return replyUserError(
                 interaction,
                 {
                     type:
                         ErrorTypes.USER_INPUT,
-
                     message:
-                        'Unknown application management command.'
+                        'Unknown application command.'
                 }
             );
-
         } catch (error) {
-
             console.error(
                 'App-admin command error:',
                 error
             );
-
 
             if (
                 interaction.replied ||
@@ -190,14 +162,12 @@ export default {
                 return;
             }
 
-
             return replyUserError(
                 interaction,
                 {
                     type:
                         error?.type ||
                         ErrorTypes.UNKNOWN,
-
                     message:
                         error?.userMessage ||
                         'Something went wrong while managing applications.'
@@ -206,6 +176,7 @@ export default {
         }
     }
 };
+
 // ============================================================
 // LIST APPLICATIONS
 // ============================================================
@@ -213,7 +184,6 @@ export default {
 async function handleApplicationList(
     interaction
 ) {
-
     const status =
         interaction.options.getString(
             'status'
@@ -224,9 +194,7 @@ async function handleApplicationList(
             'user'
         );
 
-
     const filters = {};
-
 
     if (status) {
         filters.status = status;
@@ -236,20 +204,16 @@ async function handleApplicationList(
         filters.userId = user.id;
     }
 
-
     let applications;
 
     try {
-
         applications =
             await getApplications(
                 interaction.client,
                 interaction.guild.id,
                 filters
             );
-
     } catch (error) {
-
         console.error(
             'Could not load applications:',
             error
@@ -260,45 +224,34 @@ async function handleApplicationList(
             {
                 type:
                     ErrorTypes.DATABASE,
-
                 message:
                     'I could not load the applications.'
             }
         );
     }
 
-
     if (
         !Array.isArray(applications) ||
         applications.length === 0
     ) {
-
         return interaction.reply({
-
             embeds: [
-
                 createEmbed({
-
                     title:
                         'Applications',
-
                     description:
                         'No applications were found.'
                 })
-
             ],
-
             flags:
                 MessageFlags.Ephemeral
         });
     }
 
-
     const lines =
         applications
             .slice(0, 20)
             .map(application => {
-
                 const id =
                     String(
                         application.id ||
@@ -318,7 +271,6 @@ async function handleApplicationList(
                     application.status ||
                     'unknown';
 
-
                 return (
                     `\`${id}\` — ` +
                     `${applicant} — ` +
@@ -327,50 +279,78 @@ async function handleApplicationList(
                 );
             });
 
-
     const filterText =
-      // ============================================================
+        [
+            status
+                ? `Status: **${status}**`
+                : null,
+
+            user
+                ? `User: ${user}`
+                : null
+        ]
+            .filter(Boolean)
+            .join(' • ');
+
+    const description =
+        (
+            filterText
+                ? `${filterText}\n\n`
+                : ''
+        ) +
+        lines.join('\n');
+
+    return interaction.reply({
+        embeds: [
+            createEmbed({
+                title:
+                    'Submitted Applications',
+                description:
+                    description.slice(
+                        0,
+                        4000
+                    )
+            })
+        ],
+        flags:
+            MessageFlags.Ephemeral
+    });
+}
+
+// ============================================================
 // REVIEW APPLICATION
 // ============================================================
 
 async function handleApplicationReview(
     interaction
 ) {
-
     const applicationId =
         interaction.options.getString(
             'id'
         );
 
-
     if (!applicationId) {
-
         return replyUserError(
             interaction,
             {
                 type:
                     ErrorTypes.USER_INPUT,
-
                 message:
                     'Please provide an application ID.'
             }
         );
     }
 
-
     let application;
 
     try {
-
         application =
             await getApplication(
                 interaction.client,
                 interaction.guild.id,
                 applicationId
             );
-
     } catch (error) {
-
         console.error(
             'Could not load application:',
             error
@@ -381,50 +361,41 @@ async function handleApplicationReview(
             {
                 type:
                     ErrorTypes.DATABASE,
-
                 message:
                     'I could not load that application.'
             }
         );
     }
 
-
     if (!application) {
-
         return replyUserError(
             interaction,
             {
                 type:
                     ErrorTypes.USER_INPUT,
-
                 message:
                     'Application not found.'
             }
         );
     }
 
-
     const status =
         application.status ||
         'unknown';
-
 
     const applicant =
         application.userId
             ? `<@${application.userId}>`
             : 'Unknown user';
 
-
     const roleName =
         application.roleName ||
         'Unknown role';
-
 
     const answersText =
         formatApplicationAnswers(
             application.answers
         );
-
 
     const description =
         `**Application ID:** \`${application.id}\`\n` +
@@ -433,13 +404,10 @@ async function handleApplicationReview(
         `**Status:** ${status}\n\n` +
         answersText;
 
-
     const embed =
         createEmbed({
-
             title:
                 'Application Review',
-
             description:
                 description.slice(
                     0,
@@ -447,63 +415,33 @@ async function handleApplicationReview(
                 )
         });
 
-
-    // ================================================
-    // ALREADY REVIEWED
-    // ================================================
-
     if (status !== 'pending') {
-
         return interaction.reply({
-
-            embeds: [
-                embed
-            ],
-
+            embeds: [embed],
             flags:
                 MessageFlags.Ephemeral
         });
     }
-
-
-    // ================================================
-    // REVIEW BUTTONS
-    // ================================================
-
-    const {
-        ActionRowBuilder,
-        ButtonBuilder,
-        ButtonStyle
-    } = await import(
-        'discord.js'
-    );
-
 
     const approveButton =
         new ButtonBuilder()
             .setCustomId(
                 `app_review:approve:${application.id}`
             )
-            .setLabel(
-                'Approve'
-            )
+            .setLabel('Approve')
             .setStyle(
                 ButtonStyle.Success
             );
-
 
     const denyButton =
         new ButtonBuilder()
             .setCustomId(
                 `app_review:deny:${application.id}`
             )
-            .setLabel(
-                'Deny'
-            )
+            .setLabel('Deny')
             .setStyle(
                 ButtonStyle.Danger
             );
-
 
     const row =
         new ActionRowBuilder()
@@ -512,42 +450,31 @@ async function handleApplicationReview(
                 denyButton
             );
 
-
     return interaction.reply({
-
-        embeds: [
-            embed
-        ],
-
-        components: [
-            row
-        ],
-
+        embeds: [embed],
+        components: [row],
         flags:
             MessageFlags.Ephemeral
     });
 }
-  // ============================================================
-// FORMAT APPLICATION ANSWERS
+
+// ============================================================
+// FORMAT ANSWERS
 // ============================================================
 
 function formatApplicationAnswers(
     answers
 ) {
-
     if (
         !Array.isArray(answers) ||
         answers.length === 0
     ) {
-
         return 'No answers were recorded.';
     }
 
-
-    const formatted =
-        answers.map(
+    return answers
+        .map(
             (item, index) => {
-
                 const question =
                     String(
                         item?.question ||
@@ -560,63 +487,11 @@ function formatApplicationAnswers(
                         'No answer provided.'
                     ).trim();
 
-
                 return (
                     `**${question}**\n` +
                     answer
                 );
             }
-        );
-
-
-    return formatted.join(
-        '\n\n'
-    );
-}
-  // ============================================================
-// NOTE
-// ============================================================
-//
-// Application creation is NOT handled by /app-admin.
-//
-// New applications are created through:
-//     appSetup.js
-//
-// Existing applications are configured through:
-//     /configure applications
-//
-// Submitted applications are handled through:
-//     application_apply.js
-//     apply.js
-//
-// ============================================================
-// ============================================================
-// END OF APP-ADMIN COMMAND
-// ============================================================
-//
-// The actual approve/deny button handling is intentionally
-// kept outside this slash-command file.
-//
-// The buttons use these custom IDs:
-//
-//     app_review:approve:APPLICATION_ID
-//     app_review:deny:APPLICATION_ID
-//
-// They will be handled by the application interaction handler.
-//
-// ============================================================
-// ============================================================
-// END OF APP-ADMIN COMMAND
-// ============================================================
-//
-// The actual approve/deny button handling is intentionally
-// kept outside this slash-command file.
-//
-// The buttons use these custom IDs:
-//
-//     app_review:approve:APPLICATION_ID
-//     app_review:deny:APPLICATION_ID
-//
-// They will be handled by the application interaction handler.
-//
-// ============================================================
+        )
+        .join('\n\n');
+                                }
