@@ -767,15 +767,24 @@ export async function handleConfigureModal(
             applications
         );
 
-        return interaction.reply({
+            return interaction.reply({
 
             embeds: [
 
                 successEmbed(
                     'Application Updated',
-                    `The application name is now **${
-                        { 
-     // ========================================================
+                    `The application name is now **${application.name}**.`
+                )
+
+            ],
+
+            flags:
+                MessageFlags.Ephemeral
+        });
+    }
+
+
+    // ========================================================
     // EDIT APPLICATION QUESTIONS
     // ========================================================
 
@@ -783,7 +792,7 @@ export async function handleConfigureModal(
         interaction.customId.startsWith(
             'configure_questions:'
         )
-                        {
+    ) {
 
         const parts =
             interaction.customId.split(':');
@@ -831,6 +840,7 @@ export async function handleConfigureModal(
                         .trim();
 
                 if (question) {
+
                     questions.push(
                         question.substring(0, 1000)
                     );
@@ -869,7 +879,6 @@ export async function handleConfigureModal(
         return interaction.reply({
 
             embeds: [
-    
 
                 successEmbed(
                     'Questions Updated',
@@ -881,7 +890,8 @@ export async function handleConfigureModal(
             flags:
                 MessageFlags.Ephemeral
         });
-     }
+    }
+
 
     return false;
 }
