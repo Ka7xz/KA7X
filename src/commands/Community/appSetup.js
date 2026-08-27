@@ -114,7 +114,7 @@ return interaction.editReply({
                 'Setup Expired',  
 
             description:  
-                'The setup session expired. Run `/app-admin setup` again.'  
+                'The setup session expired. Run `/configure setup` again.'  
         })  
     ],  
 
