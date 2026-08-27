@@ -598,12 +598,56 @@ rank: 0
     }
 }
 
-export async function getApplicationRoles(client, guildId) {
+export async function updateApplicationRoleSettings(
+    client,
+    guildId,
+    roleId,
+    updates = {}
+) {
     try {
-        if (!client.db || typeof client.db.get !== "function") {
-            logger.error("Database client is not available for getApplicationRoles.");
-            return [];
+        if (
+            !client.db ||
+            typeof client.db.set !== 'function'
+        ) {
+            logger.error(
+                'Database client is not available for updateApplicationRoleSettings.'
+            );
+
+            return false;
         }
+
+        const current =
+            await getApplicationRoleSettings(
+                client,
+                guildId,
+                roleId
+            );
+
+        const merged = {
+            ...(current || {}),
+            ...updates
+        };
+
+        await client.db.set(
+            getApplicationRoleSettingsKey(
+                guildId,
+                roleId
+            ),
+            merged
+        );
+
+        return true;
+
+    } catch (error) {
+
+        logger.error(
+            `Error updating application role settings for ${guildId}:${roleId}:`,
+            error
+        );
+
+        return false;
+    }
+}
 
         const key = getApplicationRolesKey(guildId);
         const roles = await client.db.get(key, []);
