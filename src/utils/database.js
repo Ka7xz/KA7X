@@ -32,7 +32,6 @@ export {
     getUserLevelKey,
     getUserLevelPrefix,
     getApplicationRolesKey,
-    getApplicationRoleSettingsKey,
     getApplicationSettingsKey,
     getUserApplicationsKey,
     getApplicationKey,
@@ -70,7 +69,6 @@ import {
     getLevelingKey,
     getUserLevelKey,
     getApplicationRolesKey,
-    getApplicationRoleSettingsKey,
     getApplicationSettingsKey,
     getUserApplicationsKey,
     getApplicationKey,
@@ -1057,3 +1055,599 @@ export async function getUserLevelData(
         };
     }
 }
+// ============================================================
+// APPLICATION DATABASE FUNCTIONS
+// ============================================================
+
+const getApplicationRoleSettingsKey = (guildId, roleId) =>
+    `guild:${guildId}:applications:role:${roleId}:settings`;
+
+export { getApplicationRoleSettingsKey };
+
+function getClientDb(client) {
+    if (client?.db && typeof client.db.get === 'function') {
+        return client.db;
+    }
+
+    return db;
+}
+
+async function ensureDatabase(client) {
+    const database = getClientDb(client);
+
+    if (!database.initialized && typeof database.initialize === 'function') {
+        await database.initialize();
+    }
+
+    return database;
+}
+
+// ------------------------------------------------------------
+// APPLICATION ROLES
+// ------------------------------------------------------------
+
+export async function getApplicationRoles(client, guildId) {
+    try {
+        const database = await ensureDatabase(client);
+
+        const key = getApplicationRolesKey(guildId);
+        const value = await database.get(key, []);
+        const roles = unwrapReplitData(value);
+
+        return Array.isArray(roles) ? roles : [];
+    } catch (error) {
+        logger.error(
+            `Error getting application roles for ${guildId}:`,
+            error
+        );
+
+        return [];
+    }
+}
+
+export async function saveApplicationRoles(
+    client,
+    guildId,
+    roles
+) {
+    try {
+        const database = await ensureDatabase(client);
+
+        const key = getApplicationRolesKey(guildId);
+
+        await database.set(
+            key,
+            Array.isArray(roles) ? roles : []
+        );
+
+        return true;
+    } catch (error) {
+        logger.error(
+            `Error saving application roles for ${guildId}:`,
+            error
+        );
+
+        return false;
+    }
+}
+
+// ------------------------------------------------------------
+// ROLE-SPECIFIC SETTINGS
+// ------------------------------------------------------------
+
+export async function getApplicationRoleSettings(
+    client,
+    guildId,
+    roleId
+) {
+    try {
+        const database = await ensureDatabase(client);
+
+        const key =
+            getApplicationRoleSettingsKey(
+                guildId,
+                roleId
+            );
+
+        const value =
+            await database.get(
+                key,
+                null
+            );
+
+        return unwrapReplitData(value) || {
+            questions:
+                getDefaultApplicationQuestions()
+        };
+    } catch (error) {
+        logger.error(
+            `Error getting application role settings for ${guildId}/${roleId}:`,
+            error
+        );
+
+        return {
+            questions:
+                getDefaultApplicationQuestions()
+        };
+    }
+}
+
+export async function saveApplicationRoleSettings(
+    client,
+    guildId,
+    roleId,
+    settings
+) {
+    try {
+        const database =
+            await ensureDatabase(client);
+
+        const key =
+            getApplicationRoleSettingsKey(
+                guildId,
+                roleId
+            );
+
+        const current =
+            await getApplicationRoleSettings(
+                client,
+                guildId,
+                roleId
+            );
+
+        const merged = {
+            ...current,
+            ...(settings || {})
+        };
+
+        await database.set(
+            key,
+            merged
+        );
+
+        return true;
+    } catch (error) {
+        logger.error(
+            `Error saving application role settings for ${guildId}/${roleId}:`,
+            error
+        );
+
+        return false;
+    }
+}
+
+// ------------------------------------------------------------
+// APPLICATION SETTINGS
+// ------------------------------------------------------------
+
+function defaultApplicationSettings() {
+    return {
+        enabled: false,
+        applicationChannelId: null,
+        logChannelId: null,
+        questions:
+            getDefaultApplicationQuestions(),
+        managerRoles: [],
+        roles: {
+            admin: null,
+            reviewer: null,
+            accepted: null,
+            denied: null
+        },
+        requiredRoles: [],
+        deniedRoles: [],
+        minAccountAge: 0,
+        maxApplications: 1,
+        cooldown:
+            BotConfig.applications?.applicationCooldown ??
+            24,
+        allowMultipleApplications: false,
+        requireVerification: false,
+        customWelcomeMessage: '',
+        pendingApplicationRetentionDays: 30,
+        reviewedApplicationRetentionDays:
+            BotConfig.applications?.deleteApprovedAfter ??
+            30
+    };
+}
+
+export async function getApplicationSettings(
+    client,
+    guildId
+) {
+    try {
+        const database =
+            await ensureDatabase(client);
+
+        const key =
+            getApplicationSettingsKey(
+                guildId
+            );
+
+        const value =
+            await database.get(
+                key,
+                defaultApplicationSettings()
+            );
+
+        return {
+            ...defaultApplicationSettings(),
+            ...(unwrapReplitData(value) || {})
+        };
+    } catch (error) {
+        logger.error(
+            `Error getting application settings for ${guildId}:`,
+            error
+        );
+
+        return defaultApplicationSettings();
+    }
+}
+
+export async function saveApplicationSettings(
+    client,
+    guildId,
+    settings
+) {
+    try {
+        const database =
+            await ensureDatabase(client);
+
+        const current =
+            await getApplicationSettings(
+                client,
+                guildId
+            );
+
+        const merged = {
+            ...current,
+            ...(settings || {})
+        };
+
+        await database.set(
+            getApplicationSettingsKey(guildId),
+            merged
+        );
+
+        return true;
+    } catch (error) {
+        logger.error(
+            `Error saving application settings for ${guildId}:`,
+            error
+        );
+
+        return false;
+    }
+}
+
+// ------------------------------------------------------------
+// APPLICATIONS
+// ------------------------------------------------------------
+
+function makeApplicationId() {
+    return (
+        `${Date.now().toString(36)}-` +
+        `${Math.random().toString(36).slice(2, 10)}`
+    );
+}
+
+export async function getApplication(
+    client,
+    guildId,
+    applicationId
+) {
+    try {
+        const database =
+            await ensureDatabase(client);
+
+        const key =
+            getApplicationKey(
+                guildId,
+                applicationId
+            );
+
+        const value =
+            await database.get(
+                key,
+                null
+            );
+
+        return unwrapReplitData(value);
+    } catch (error) {
+        logger.error(
+            `Error getting application ${applicationId}:`,
+            error
+        );
+
+        return null;
+    }
+}
+
+export async function createApplication(
+    client,
+    data
+) {
+    const database =
+        await ensureDatabase(client);
+
+    const application = {
+        id:
+            data.id ||
+            makeApplicationId(),
+
+        guildId:
+            String(data.guildId),
+
+        userId:
+            String(data.userId),
+
+        roleId:
+            String(data.roleId),
+
+        roleName:
+            data.roleName ||
+            null,
+
+        answers:
+            Array.isArray(data.answers)
+                ? data.answers
+                : [],
+
+        status:
+            'pending',
+
+        createdAt:
+            data.createdAt ||
+            new Date().toISOString(),
+
+        reviewer:
+            null,
+
+        reviewMessage:
+            null,
+
+        reviewedAt:
+            null
+    };
+
+    await database.set(
+        getApplicationKey(
+            data.guildId,
+            application.id
+        ),
+        application
+    );
+
+    const userKey =
+        getUserApplicationsKey(
+            data.guildId,
+            data.userId
+        );
+
+    const current =
+        await database.get(
+            userKey,
+            []
+        );
+
+    const userApplications =
+        Array.isArray(current)
+            ? current
+            : [];
+
+    userApplications.push(
+        application
+    );
+
+    await database.set(
+        userKey,
+        userApplications
+    );
+
+    return application;
+}
+
+export async function updateApplication(
+    client,
+    guildId,
+    applicationId,
+    updates
+) {
+    const database =
+        await ensureDatabase(client);
+
+    const current =
+        await getApplication(
+            client,
+            guildId,
+            applicationId
+        );
+
+    if (!current) {
+        return null;
+    }
+
+    const updated = {
+        ...current,
+        ...(updates || {}),
+        id:
+            current.id,
+        guildId:
+            current.guildId ||
+            String(guildId)
+    };
+
+    await database.set(
+        getApplicationKey(
+            guildId,
+            applicationId
+        ),
+        updated
+    );
+
+    if (updated.userId) {
+        const userKey =
+            getUserApplicationsKey(
+                guildId,
+                updated.userId
+            );
+
+        const list =
+            await database.get(
+                userKey,
+                []
+            );
+
+        const applications =
+            Array.isArray(list)
+                ? list
+                : [];
+
+        const index =
+            applications.findIndex(
+                item =>
+                    String(item.id) ===
+                    String(applicationId)
+            );
+
+        if (index >= 0) {
+            applications[index] =
+                updated;
+        } else {
+            applications.push(updated);
+        }
+
+        await database.set(
+            userKey,
+            applications
+        );
+    }
+
+    return updated;
+}
+
+export async function getUserApplications(
+    client,
+    guildId,
+    userId
+) {
+    try {
+        const database =
+            await ensureDatabase(client);
+
+        const key =
+            getUserApplicationsKey(
+                guildId,
+                userId
+            );
+
+        const value =
+            await database.get(
+                key,
+                []
+            );
+
+        const applications =
+            unwrapReplitData(value);
+
+        return Array.isArray(applications)
+            ? applications
+            : [];
+    } catch (error) {
+        logger.error(
+            `Error getting applications for user ${userId}:`,
+            error
+        );
+
+        return [];
+    }
+}
+
+export async function getApplications(
+    client,
+    guildId,
+    filters = {}
+) {
+    try {
+        const database =
+            await ensureDatabase(client);
+
+        const prefix =
+            getApplicationsPrefix(
+                guildId
+            );
+
+        const keys =
+            await database.list(
+                prefix
+            );
+
+        const applications = [];
+
+        for (const key of keys) {
+            if (
+                key.endsWith(':roles') ||
+                key.endsWith(':settings') ||
+                key.includes(':users:')
+            ) {
+                continue;
+            }
+
+            const value =
+                await database.get(
+                    key,
+                    null
+                );
+
+            const application =
+                unwrapReplitData(value);
+
+            if (!application) {
+                continue;
+            }
+
+            if (
+                filters.status &&
+                application.status !==
+                    filters.status
+            ) {
+                continue;
+            }
+
+            if (
+                filters.userId &&
+                String(application.userId) !==
+                    String(filters.userId)
+            ) {
+                continue;
+            }
+
+            if (
+                filters.roleId &&
+                String(application.roleId) !==
+                    String(filters.roleId)
+            ) {
+                continue;
+            }
+
+            applications.push(
+                application
+            );
+        }
+
+        applications.sort(
+            (a, b) =>
+                new Date(b.createdAt || 0) -
+                new Date(a.createdAt || 0)
+        );
+
+        return applications;
+    } catch (error) {
+        logger.error(
+            `Error getting applications for ${guildId}:`,
+            error
+        );
+
+        return [];
+    }
+                }
