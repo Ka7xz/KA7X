@@ -3,6 +3,7 @@
 import { pgDb } from './postgresDatabase.js';
 import { logger } from './logger.js';
 import { BotConfig, getDefaultApplicationQuestions } from '../config/bot.js';
+import { getXpForLevel } from '../services/leveling/leveling.js';
 
 export {
     db,
@@ -1024,7 +1025,4 @@ export async function getUserLevelData(
                 data.level || 0,
 
             totalXp:
-                data.totalXp || 0,
-
-            lastMessage:
-                data.lastM
+                data.
