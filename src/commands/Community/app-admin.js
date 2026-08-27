@@ -32,168 +32,176 @@ import {
 
 
 // ============================================================
-// /APP-ADMIN
+// APPLICATION MANAGEMENT
+// /configure applications
 // ============================================================
 
 export default {
 
     data: new SlashCommandBuilder()
 
-        .setName('app-admin')
+        .setName('configure')
 
         .setDescription(
-            'Manage staff applications'
+            'Configure and manage server features'
         )
 
         .setDefaultMemberPermissions(
             PermissionFlagsBits.ManageGuild
         )
 
-
         // ====================================================
-        // SETUP
+        // APPLICATIONS
         // ====================================================
 
-        .addSubcommand(subcommand =>
-            subcommand
+        .addSubcommandGroup(group =>
+            group
 
-                .setName('setup')
+                .setName('applications')
 
                 .setDescription(
-                    'Create a new staff application'
-                )
-        )
-
-
-        // ====================================================
-        // ENABLE
-        // ====================================================
-
-        .addSubcommand(subcommand =>
-            subcommand
-
-                .setName('enable')
-
-                .setDescription(
-                    'Enable an application'
+                    'Manage the server application system'
                 )
 
-                .addRoleOption(option =>
-                    option
+                // ============================================
+                // SETUP
+                // ============================================
 
-                        .setName('role')
+                .addSubcommand(subcommand =>
+                    subcommand
+
+                        .setName('setup')
 
                         .setDescription(
-                            'Application role'
+                            'Create a new staff application'
                         )
-
-                        .setRequired(true)
-                )
-        )
-
-
-        // ====================================================
-        // DISABLE
-        // ====================================================
-
-        .addSubcommand(subcommand =>
-            subcommand
-
-                .setName('disable')
-
-                .setDescription(
-                    'Disable an application'
                 )
 
-                .addRoleOption(option =>
-                    option
+                // ============================================
+                // ENABLE
+                // ============================================
 
-                        .setName('role')
+                .addSubcommand(subcommand =>
+                    subcommand
+
+                        .setName('enable')
 
                         .setDescription(
-                            'Application role'
+                            'Enable a staff application'
                         )
 
-                        .setRequired(true)
-                )
-        )
+                        .addRoleOption(option =>
+                            option
 
+                                .setName('role')
 
-        // ====================================================
-        // LIST
-        // ====================================================
+                                .setDescription(
+                                    'The application role'
+                                )
 
-        .addSubcommand(subcommand =>
-            subcommand
-
-                .setName('list')
-
-                .setDescription(
-                    'List submitted applications'
+                                .setRequired(true)
+                        )
                 )
 
-                .addStringOption(option =>
-                    option
+                // ============================================
+                // DISABLE
+                // ============================================
 
-                        .setName('status')
+                .addSubcommand(subcommand =>
+                    subcommand
+
+                        .setName('disable')
 
                         .setDescription(
-                            'Filter by application status'
+                            'Disable a staff application'
                         )
 
-                        .addChoices(
-                            {
-                                name: 'Pending',
-                                value: 'pending'
-                            },
+                        .addRoleOption(option =>
+                            option
 
-                            {
-                                name: 'Approved',
-                                value: 'approved'
-                            },
+                                .setName('role')
 
-                            {
-                                name: 'Denied',
-                                value: 'denied'
-                            }
+                                .setDescription(
+                                    'The application role'
+                                )
+
+                                .setRequired(true)
                         )
                 )
 
-                .addUserOption(option =>
-                    option
+                // ============================================
+                // LIST
+                // ============================================
 
-                        .setName('user')
+                .addSubcommand(subcommand =>
+                    subcommand
+
+                        .setName('list')
 
                         .setDescription(
-                            'Filter by applicant'
+                            'List submitted applications'
+                        )
+
+                        .addStringOption(option =>
+                            option
+
+                                .setName('status')
+
+                                .setDescription(
+                                    'Filter applications by status'
+                                )
+
+                                .addChoices(
+                                    {
+                                        name: 'Pending',
+                                        value: 'pending'
+                                    },
+                                    {
+                                        name: 'Approved',
+                                        value: 'approved'
+                                    },
+                                    {
+                                        name: 'Denied',
+                                        value: 'denied'
+                                    }
+                                )
+                        )
+
+                        .addUserOption(option =>
+                            option
+
+                                .setName('user')
+
+                                .setDescription(
+                                    'Filter applications by applicant'
+                                )
                         )
                 )
-        )
 
+                // ============================================
+                // REVIEW
+                // ============================================
 
-        // ====================================================
-        // REVIEW
-        // ====================================================
+                .addSubcommand(subcommand =>
+                    subcommand
 
-        .addSubcommand(subcommand =>
-            subcommand
-
-                .setName('review')
-
-                .setDescription(
-                    'Review an application'
-                )
-
-                .addStringOption(option =>
-                    option
-
-                        .setName('id')
+                        .setName('review')
 
                         .setDescription(
-                            'Application ID'
+                            'Review a submitted application'
                         )
 
-                        .setRequired(true)
+                        .addStringOption(option =>
+                            option
+
+                                .setName('id')
+
+                                .setDescription(
+                                    'Application ID'
+                                )
+
+                                .setRequired(true)
+                        )
                 )
         ),
 
@@ -216,7 +224,7 @@ export default {
                         ErrorTypes.UNKNOWN,
 
                     message:
-                        'This command can only be used in a server.'
+                        'This command can only be used inside a server.'
                 }
             );
         }
@@ -224,9 +232,9 @@ export default {
 
         try {
 
-            // ------------------------------------------------
-            // VERIFY MANAGER PERMISSION
-            // ------------------------------------------------
+            // ==================================================
+            // PERMISSION CHECK
+            // ==================================================
 
             await ApplicationService.checkManagerPermission(
                 interaction.client,
@@ -235,77 +243,98 @@ export default {
             );
 
 
+            const group =
+                interaction.options.getSubcommandGroup();
+
+
             const subcommand =
                 interaction.options.getSubcommand();
 
 
-            // ------------------------------------------------
+            if (
+                group !== 'applications'
+            ) {
+
+                return replyUserError(
+                    interaction,
+                    {
+                        type:
+                            ErrorTypes.USER_INPUT,
+
+                        message:
+                            'Invalid application management command.'
+                    }
+                );
+            }
+
+
+            // ==================================================
             // SETUP
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 subcommand === 'setup'
             ) {
 
-                return handleApplicationSetup(
+                return await handleApplicationSetup(
                     interaction
                 );
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // ENABLE
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 subcommand === 'enable'
             ) {
 
-                return handleApplicationToggle(
+                return await handleApplicationToggle(
                     interaction,
                     true
                 );
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // DISABLE
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 subcommand === 'disable'
             ) {
 
-                return handleApplicationToggle(
+                return await handleApplicationToggle(
                     interaction,
                     false
                 );
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // LIST
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 subcommand === 'list'
             ) {
 
-                return handleApplicationList(
+                return await handleApplicationList(
                     interaction
                 );
             }
 
 
-            // ------------------------------------------------
+            // ==================================================
             // REVIEW
-            // ------------------------------------------------
+            // ==================================================
 
             if (
                 subcommand === 'review'
             ) {
 
-                return handleApplicationReview(
+                return await handleApplicationReview(
                     interaction
                 );
             }
@@ -318,20 +347,20 @@ export default {
                         ErrorTypes.USER_INPUT,
 
                     message:
-                        'Unknown application management action.'
+                        'Unknown application command.'
                 }
             );
 
         } catch (error) {
 
             logger.error(
-                'Application admin command failed',
+                'Application management command failed',
                 {
                     error:
-                        error.message,
+                        error?.message,
 
                     stack:
-                        error.stack,
+                        error?.stack,
 
                     guildId:
                         interaction.guildId,
@@ -346,6 +375,7 @@ export default {
                 interaction.replied ||
                 interaction.deferred
             ) {
+
                 return;
             }
 
@@ -359,7 +389,6 @@ export default {
 
                     message:
                         error?.userMessage ||
-                        error?.message ||
                         'Something went wrong while managing applications.'
                 }
             );
@@ -369,7 +398,7 @@ export default {
 
 
 // ============================================================
-// ENABLE / DISABLE
+// ENABLE / DISABLE APPLICATION
 // ============================================================
 
 async function handleApplicationToggle(
@@ -378,7 +407,9 @@ async function handleApplicationToggle(
 ) {
 
     const role =
-        interaction.options.getRole('role');
+        interaction.options.getRole(
+            'role'
+        );
 
 
     if (!role) {
@@ -444,6 +475,7 @@ async function handleApplicationToggle(
         return interaction.reply({
 
             embeds: [
+
                 createEmbed({
 
                     title:
@@ -456,6 +488,7 @@ async function handleApplicationToggle(
                             ? `${role} is already enabled.`
                             : `${role} is already disabled.`
                 })
+
             ],
 
             flags:
@@ -478,6 +511,7 @@ async function handleApplicationToggle(
     return interaction.reply({
 
         embeds: [
+
             createEmbed({
 
                 title:
@@ -490,6 +524,7 @@ async function handleApplicationToggle(
                         ? `${role} applications are now **enabled**.`
                         : `${role} applications are now **disabled**.`
             })
+
         ],
 
         flags:
@@ -522,12 +557,16 @@ async function handleApplicationList(
 
 
     if (status) {
-        filters.status = status;
+
+        filters.status =
+            status;
     }
 
 
     if (user) {
-        filters.userId = user.id;
+
+        filters.userId =
+            user.id;
     }
 
 
@@ -547,6 +586,7 @@ async function handleApplicationList(
         return interaction.reply({
 
             embeds: [
+
                 createEmbed({
 
                     title:
@@ -555,6 +595,7 @@ async function handleApplicationList(
                     description:
                         'No applications were found.'
                 })
+
             ],
 
             flags:
@@ -566,24 +607,23 @@ async function handleApplicationList(
     const lines =
         applications
             .slice(0, 20)
-            .map(application => {
+            .map(
+                application => {
 
-                const applicant =
-                    `<@${application.userId}>`;
-
-
-                return (
-                    `\`${application.id}\` ` +
-                    `— ${applicant} ` +
-                    `— **${application.roleName || 'Unknown'}** ` +
-                    `— **${application.status || 'unknown'}**`
-                );
-            });
+                    return (
+                        `\`${application.id}\` ` +
+                        `— <@${application.userId}> ` +
+                        `— **${application.roleName || 'Unknown'}** ` +
+                        `— **${application.status || 'unknown'}**`
+                    );
+                }
+            );
 
 
     return interaction.reply({
 
         embeds: [
+
             createEmbed({
 
                 title:
@@ -592,6 +632,7 @@ async function handleApplicationList(
                 description:
                     lines.join('\n')
             })
+
         ],
 
         flags:
@@ -601,7 +642,7 @@ async function handleApplicationList(
 
 
 // ============================================================
-// REVIEW
+// REVIEW APPLICATION
 // ============================================================
 
 async function handleApplicationReview(
@@ -697,7 +738,9 @@ async function handleApplicationReview(
         ActionRowBuilder,
         ButtonBuilder,
         ButtonStyle
-    } = await import('discord.js');
+    } = await import(
+        'discord.js'
+    );
 
 
     const approve =
@@ -774,9 +817,31 @@ function formatAnswers(
 
 
     return answers
-
         .map(answer => {
 
             const question =
                 String(
-                    answer?.question || '
+                    answer?.question ||
+                    'Question'
+                );
+
+            const answerText =
+                String(
+                    answer?.answer ||
+                    'No answer'
+                );
+
+
+            return (
+                `**${question}**\n` +
+                answerText
+            );
+
+        })
+        .join('\n\n')
+
+        .slice(
+            0,
+            3500
+        );
+}
